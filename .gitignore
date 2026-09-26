@@ -13,6 +13,10 @@ out/
 src/generated/prisma/
 *.tsbuildinfo
 
+# Rewritten by every `next dev`, `next build`, and `next typegen`. Next.js
+# documents this as an implementation detail: never commit or edit it.
+next-env.d.ts
+
 # IDE
 .idea/
 .vscode/
