@@ -13,18 +13,42 @@ requirement is the Supabase project the deployment points at.
 
 ## Required environment variables
 
-Set these in the host's environment settings, for every environment you intend
-to use (Production, Preview, Development):
+Set these in the host's environment settings, for every environment you intend to
+use (Production, Preview, Development):
 
-| Variable                               | Visibility    | Required | Source                                   |
-| -------------------------------------- | ------------- | -------: | ---------------------------------------- |
-| `NEXT_PUBLIC_SUPABASE_URL`             | client/public |      yes | Project Settings → API → Project URL     |
-| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | client/public |      yes | Project Settings → API → Publishable key |
+| Variable                               | Visibility    | Required | Source                                        |
+| -------------------------------------- | ------------- | -------: | --------------------------------------------- |
+| `NEXT_PUBLIC_SUPABASE_URL`             | client/public |      yes | Project Settings → API Keys → Project URL     |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | client/public |      yes | Project Settings → API Keys → Publishable key |
 
 Nothing else is needed. `SUPABASE_SERVICE_ROLE_KEY` and `SUPABASE_DB_URL` are read
 only by the scripts in `scripts/` and by the offline seed — **do not add them to
 the deployment environment.** See
 [Environment Variables](./env-variables.md) for the full rules.
+
+## On Vercel
+
+1. Open the project on [vercel.com/dashboard](https://vercel.com/dashboard). If
+   you belong to more than one team, pick the right one from the team switcher
+   first.
+2. **Settings** in the left sidebar.
+3. **Environment Variables**.
+4. Add the two keys, then tick **Production**, **Preview**, and **Development**.
+5. Save, then redeploy — see below.
+
+A variable that is not ticked for an environment is simply absent for that
+environment's builds, which reproduces the failure below with no warning. Vercel
+does not validate a variable name, so a typo in `NEXT_PUBLIC_` is silent too.
+
+**Importing `.env.local` is a trap here.** Settings → Environment Variables
+accepts an `.env` upload, which is convenient, but that file also holds
+`SUPABASE_SERVICE_ROLE_KEY` and `SUPABASE_DB_URL`. Delete both immediately after
+importing. Alternatively, the Supabase integration under **Settings →
+Integrations** populates the two public values for you.
+
+Do not bother marking these Secret. Vercel's Config/Secret choice only governs
+dashboard display, and a `NEXT_PUBLIC_` value is compiled into public JavaScript
+regardless. RLS is the actual protection.
 
 Both values are public by design. The publishable key is protected by Row Level
 Security, which is the only thing standing between an anonymous browser and your
@@ -33,12 +57,19 @@ any `NEXT_PUBLIC_` value is readable by anyone who loads the page.
 
 ## Redeploy after changing a `NEXT_PUBLIC_` variable
 
-`NEXT_PUBLIC_*` values are **inlined into the client bundle at build time**, not
-read from the environment at request time. Adding the variables to an already
-deployed project therefore changes nothing until a new build runs.
+`NEXT_PUBLIC_*` values are **inlined into the bundle at build time**, not read
+from the environment at request time. You can confirm this in a local build — the
+Supabase URL appears as a literal string in the output under `.next/`, with no
+`process.env` lookup left at runtime. Adding the variables to an already deployed
+project therefore changes nothing until a new build runs.
 
-Use **Redeploy** on the deployment, or push a commit. Restarting or promoting the
-existing deployment reuses the old bundle and will keep failing.
+Vercel's own wording: _"the change takes effect on your next deployment, not on the
+deployment that's already live."_
+
+On Vercel: **Deployments** → the latest deployment → `⋯` → **Redeploy**. If the
+redeploy still fails, untick **Use project's Ignore Build Step** on that dialog —
+otherwise a cached build can be reused, which reuses the old bundle. Pushing an
+empty commit forces an unambiguous clean build.
 
 ## Verifying a deployment
 

@@ -92,8 +92,8 @@ Start with `CONTEXT.md` for the decision record, then
 
 During setup the service-role key and the database password were pasted into a
 chat session, so treat both as exposed. Rotate them in
-Supabase → Project Settings → API and → Database after the competition, and keep
-`.env.local` out of version control.
+Supabase → Project Settings → API Keys and → Database after the competition, and
+keep `.env.local` out of version control.
 
 Two known gaps, documented rather than hidden: anonymous registration is not
 rate limited, and a participant pass link is a bearer secret (the page says so).

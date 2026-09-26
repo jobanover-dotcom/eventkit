@@ -17,12 +17,28 @@ must never be committed.
   Component — `server-only` turns that into a build error.
 - `SUPABASE_SERVICE_ROLE_KEY` grants full database access with no RLS. It must
   not appear in any request path, log, or client bundle. If it is ever exposed,
-  rotate it in Supabase → Project Settings → API.
+  rotate it in Supabase → Project Settings → API Keys.
 - `src/config/env.ts` parses the public values with Zod on first use and raises
   `CONFIG_MISSING` with a setup message if they are absent, rather than failing
   an opaque production build.
 - `src/config/server-env.ts` owns the service-role key and is marked
   `server-only`.
+
+## Key types: publishable vs legacy
+
+Supabase is deprecating the `anon` and `service_role` JWT keys at the end of
+2026 in favour of the `sb_publishable_...` and `sb_secret_...` keys. A project
+usually has both, listed together under **Settings → API Keys**.
+
+Either format works with `@supabase/ssr`, so nothing here depends on the
+migration. Two things to know when reading the dashboard:
+
+- A publishable key looks like `sb_publishable_...`. The legacy `anon` key is a
+  JWT beginning `eyJ...` and containing `"role":"anon"`. Both are valid; they are
+  not interchangeable in the sense that you cannot tell which one you copied by
+  format alone, so take whichever the **Publishable key** field shows.
+- Only a `sb_secret_...` key — or `service_role` — bypasses RLS. A publishable key
+  never does, which is why it is safe behind a `NEXT_PUBLIC_` prefix.
 
 ## The two database tools
 

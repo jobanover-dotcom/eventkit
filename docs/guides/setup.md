@@ -19,10 +19,14 @@ cp .env.example .env.local
 
 | Variable                               | Where to get it                                                                                                                 |
 | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| `NEXT_PUBLIC_SUPABASE_URL`             | Project Settings → API → Project URL                                                                                            |
-| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Project Settings → API → Publishable key                                                                                        |
-| `SUPABASE_SERVICE_ROLE_KEY`            | Project Settings → API → service_role. Server-only.                                                                             |
+| `NEXT_PUBLIC_SUPABASE_URL`             | Project Settings → API Keys → Project URL                                                                                       |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Project Settings → API Keys → Publishable key                                                                                   |
+| `SUPABASE_SERVICE_ROLE_KEY`            | Project Settings → API Keys → Secret key (`service_role`). Server-only.                                                         |
 | `SUPABASE_DB_URL`                      | Project Settings → Database → Connection string → **Session pooler**. Keep the `postgres.<project-ref>` username and port 5432. |
+
+There is no longer a separate **Settings → API** page; keys, both new and legacy,
+live under **Settings → API Keys**. The Connect dialog at the top of the project
+shows the URL and publishable key ready to paste.
 
 `SUPABASE_DB_URL` is only read by the scripts in `scripts/`. It is never bundled
 into the browser. It does contain the database password, so treat `.env.local`
