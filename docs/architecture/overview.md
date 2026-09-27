@@ -27,8 +27,10 @@ shared UI   → no feature imports
 ## Trust boundaries
 
 - **Anonymous**: event landing pages, registration, participant pass pages.
-- **Organizer**: everything under `/events/[eventId]/dashboard` and its sections.
-  Re-verified in the organizer layout, in every Server Action, and by RLS.
+- **Organizer**: everything under `/events/[eventId]/dashboard` and its sections,
+  including the Design module. Re-verified in the organizer layout, in every
+  Server Action, and by RLS. The Design pages additionally match the event by
+  `organizer_id` before rendering.
 - **Service role**: offline demo seed only. Never used in request handling.
 
 ## Session handling
@@ -36,6 +38,15 @@ shared UI   → no feature imports
 `src/proxy.ts` refreshes Supabase auth cookies and makes an optimistic redirect
 decision for organizer routes. It is not authorization: every protected operation
 re-verifies the principal and the resource, and RLS is the final backstop.
+
+## Feature notes
+
+- [Info module](./info-module.md) — public schedule, map & venue, and rules
+  pages, plus owner-only add forms.
+- [Attendance module](./attendance-module.md) — public registration, QR passes,
+  camera check-in, the attendance sheet, and CSV export.
+- [Design module](./design-module.md) — template-based badges, certificates,
+  posters, and photo frames rendered on a canvas and exported to PNG or PDF.
 
 ## Verification boundary
 

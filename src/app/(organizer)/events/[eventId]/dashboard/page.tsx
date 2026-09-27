@@ -17,7 +17,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { EventHeader } from '@/components/shared/EventHeader'
 import { AttendanceStats } from '@/features/dashboard/components/AttendanceStats'
 import { getOwnedEventWithStats } from '@/features/events/services/eventService'
-import { notFound } from 'next/navigation'
+import { notFoundUnlessHidden } from '@/lib/page-errors'
 
 type EventDashboardPageProps = {
   params: Promise<{ eventId: string }>
@@ -39,9 +39,10 @@ export default async function EventDashboardPage({ params }: EventDashboardPageP
   let event
   try {
     event = await getOwnedEventWithStats(eventId)
-  } catch {
+  } catch (error) {
     // An event owned by somebody else is indistinguishable from a missing one.
-    notFound()
+    // A database or code fault is not, and must surface as a 500.
+    notFoundUnlessHidden(error)
   }
 
   const base = `/events/${event.id}`
@@ -123,21 +124,23 @@ export default async function EventDashboardPage({ params }: EventDashboardPageP
           detail: 'Programme items',
           href: `${base}/schedule`,
           icon: CalendarDays,
-          ready: false,
+          ready: true,
         },
         {
           label: 'Map & venue',
           detail: 'Upload a map image',
-          href: `${base}/rules`,
+          // This pointed at `/rules`, so the card opened the wrong page.
+          href: `${base}/map`,
           icon: MapPin,
-          ready: false,
+          // The Info pages shipped in this change, so all three are live.
+          ready: true,
         },
         {
           label: 'Rules',
           detail: 'Guideline sections',
           href: `${base}/rules`,
           icon: ScrollText,
-          ready: false,
+          ready: true,
         },
         {
           label: 'Participant page',

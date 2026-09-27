@@ -1,6 +1,6 @@
 import 'server-only'
 import { createClient } from '@/lib/supabase/server'
-import { requireOrganizer } from '@/features/auth/services/getCurrentOrganizer'
+import { getCurrentOrganizer, requireOrganizer } from '@/features/auth/services/getCurrentOrganizer'
 import { ACTION_ERROR_CODES, AppError } from '@/lib/errors'
 import {
   countCheckedIn,
@@ -8,6 +8,7 @@ import {
   insertEvent,
   selectOrganizerEvents,
   selectOwnedEvent,
+  selectVisibleEvent,
   type EventRow,
   type EventSummary,
 } from '@/features/events/repositories/eventRepository'
@@ -54,6 +55,26 @@ export async function listOrganizerEvents(): Promise<EventSummary[]> {
 }
 
 /**
+ * The event on its own, without the attendance counts.
+ *
+ * For pages that need the event header but already load their own counts, so a
+ * second round of count queries is not wasted.
+ */
+export async function getOwnedEvent(eventId: string): Promise<EventRow> {
+  const organizer = await requireOrganizer()
+
+  const event = await selectOwnedEvent(await createClient(), eventId, organizer.id)
+  if (!event) {
+    throw new AppError(
+      ACTION_ERROR_CODES.NOT_FOUND,
+      'That event does not exist, or it belongs to another organizer.'
+    )
+  }
+
+  return event
+}
+
+/**
  * Returns the event plus its live attendance counts.
  *
  * An event owned by somebody else is reported as NOT_FOUND rather than
@@ -84,4 +105,23 @@ export async function getOwnedEventWithStats(eventId: string): Promise<OwnedEven
       notCheckedIn: Math.max(0, totalParticipants - checkedIn),
     },
   }
+}
+
+/** Public read for the participant-facing event page. */
+export async function getPublicEvent(eventId: string): Promise<{
+  event: EventRow
+  isOrganizer: boolean
+  registrationOpen: boolean
+}> {
+  const client = await createClient()
+  const event = await selectVisibleEvent(client, eventId)
+
+  if (!event) {
+    throw new AppError(ACTION_ERROR_CODES.NOT_FOUND, 'That event does not exist.')
+  }
+
+  const organizer = await getCurrentOrganizer()
+  const isOrganizer = organizer?.id === event.organizer_id
+
+  return { event, isOrganizer, registrationOpen: event.registration_open }
 }

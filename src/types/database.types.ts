@@ -31,9 +31,9 @@ export type Database = {
       ]
       },
       certificates: {
-        Row: { id: string; event_id: string; participant_id: string; template_id: string | null; certificate_type: string; award: string; signatory: string; issued_at: string }
-        Insert: { id?: string; event_id: string; participant_id: string; template_id?: string | null; certificate_type?: string; award?: string; signatory?: string; issued_at?: string }
-        Update: { id?: string; event_id?: string; participant_id?: string; template_id?: string | null; certificate_type?: string; award?: string; signatory?: string; issued_at?: string }
+        Row: { id: string; event_id: string; participant_id: string; template_id: string | null; certificate_type: string; award: string; signatory: string; issued_at: string; verification_token: string }
+        Insert: { id?: string; event_id: string; participant_id: string; template_id?: string | null; certificate_type?: string; award?: string; signatory?: string; issued_at?: string; verification_token?: string }
+        Update: { id?: string; event_id?: string; participant_id?: string; template_id?: string | null; certificate_type?: string; award?: string; signatory?: string; issued_at?: string; verification_token?: string }
         Relationships: [
         {
           foreignKeyName: "certificates_event_id_fkey";
@@ -58,6 +58,20 @@ export type Database = {
         }
       ]
       },
+      event_design_templates: {
+        Row: { id: string; event_id: string; name: string; kind: string; storage_path: string; image_width: number; image_height: number; placeholders: Json; created_at: string }
+        Insert: { id?: string; event_id: string; name: string; kind: string; storage_path: string; image_width: number; image_height: number; placeholders?: Json; created_at?: string }
+        Update: { id?: string; event_id?: string; name?: string; kind?: string; storage_path?: string; image_width?: number; image_height?: number; placeholders?: Json; created_at?: string }
+        Relationships: [
+        {
+          foreignKeyName: "event_design_templates_event_id_fkey";
+          columns: ["event_id"];
+          isOneToOne: false;
+          referencedRelation: "events";
+          referencedColumns: ["id"];
+        }
+      ]
+      },
       events: {
         Row: { id: string; organizer_id: string; name: string; description: string; date: string; start_time: string; end_time: string; venue: string; organizer_name: string; logo_url: string | null; cover_image_url: string | null; map_url: string | null; theme: string; registration_open: boolean; created_at: string; updated_at: string }
         Insert: { id?: string; organizer_id: string; name: string; description?: string; date: string; start_time: string; end_time: string; venue: string; organizer_name: string; logo_url?: string | null; cover_image_url?: string | null; map_url?: string | null; theme?: string; registration_open?: boolean; created_at?: string; updated_at?: string }
@@ -73,9 +87,9 @@ export type Database = {
       ]
       },
       participants: {
-        Row: { id: string; event_id: string; name: string; student_id: string | null; email: string | null; course: string | null; year_section: string | null; role: string; qr_token: string; created_at: string }
-        Insert: { id?: string; event_id: string; name: string; student_id?: string | null; email?: string | null; course?: string | null; year_section?: string | null; role?: string; qr_token?: string; created_at?: string }
-        Update: { id?: string; event_id?: string; name?: string; student_id?: string | null; email?: string | null; course?: string | null; year_section?: string | null; role?: string; qr_token?: string; created_at?: string }
+        Row: { id: string; event_id: string; name: string; student_id: string | null; email: string | null; course: string | null; year_section: string | null; role: string; qr_token: string; created_at: string; organization: string | null; title: string | null }
+        Insert: { id?: string; event_id: string; name: string; student_id?: string | null; email?: string | null; course?: string | null; year_section?: string | null; role?: string; qr_token?: string; created_at?: string; organization?: string | null; title?: string | null }
+        Update: { id?: string; event_id?: string; name?: string; student_id?: string | null; email?: string | null; course?: string | null; year_section?: string | null; role?: string; qr_token?: string; created_at?: string; organization?: string | null; title?: string | null }
         Relationships: [
         {
           foreignKeyName: "participants_event_id_fkey";
@@ -139,9 +153,13 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      get_certificate_verification: {
+        Args: { p_token: string }
+        Returns: { certificate_type: string; award: string; issued_at: string; recipient_name: string; recipient_role: string; recipient_title: string; recipient_organization: string; event_id: string; event_name: string; event_venue: string; event_date: string }[]
+      },
       get_participant_pass: {
         Args: { p_event_id: string; p_token: string }
-        Returns: { id: string; event_id: string; name: string; student_id: string; course: string; year_section: string; role: string; qr_token: string; checked_in_at: string; certificate_type: string; certificate_award: string }[]
+        Returns: { id: string; event_id: string; name: string; student_id: string; course: string; year_section: string; role: string; organization: string; title: string; qr_token: string; checked_in_at: string; certificate_type: string; certificate_award: string }[]
       },
       register_participant: {
         Args: { p_event_id: string; p_name: string; p_student_id: string; p_course: string; p_year_section: string; p_email: string }

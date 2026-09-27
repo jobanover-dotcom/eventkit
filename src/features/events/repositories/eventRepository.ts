@@ -76,6 +76,24 @@ export async function selectOwnedEvent(
   return data
 }
 
+/**
+ * Reads an event without an ownership filter, for the public participant page.
+ *
+ * `events_select_visible` is the whole authorization decision here: a published
+ * event is readable by anyone, and a closed one is readable only by its owner.
+ * Deliberately *not* filtered by organizer, because that would make every
+ * published event invisible to the visitors it exists for.
+ */
+export async function selectVisibleEvent(
+  client: Client,
+  eventId: string
+): Promise<EventRow | null> {
+  const { data, error } = await client.from('events').select('*').eq('id', eventId).maybeSingle()
+
+  if (error) throw error
+  return data
+}
+
 export async function countParticipants(client: Client, eventId: string): Promise<number> {
   const { count, error } = await client
     .from('participants')
