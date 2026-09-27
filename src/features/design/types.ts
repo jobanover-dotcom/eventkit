@@ -116,6 +116,7 @@ export const CERTIFICATE_TYPES = [
   'Appreciation',
   'Recognition',
   'Achievement',
+  'Winner',
 ] as const
 
 export type CertificateType = (typeof CERTIFICATE_TYPES)[number]
@@ -145,6 +146,10 @@ export const CERTIFICATE_PRESETS: Readonly<Record<CertificateType, CertificatePr
   Achievement: {
     title: 'Certificate of Achievement',
     recognition: 'for demonstrating outstanding achievement in',
+  },
+  Winner: {
+    title: "Certificate of Winner's Distinction",
+    recognition: 'for winning',
   },
 }
 

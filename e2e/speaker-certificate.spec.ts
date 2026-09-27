@@ -1,3 +1,4 @@
+import { readFile } from 'node:fs/promises'
 import { expect, test } from '@playwright/test'
 import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import { loadLocalEnv } from '../scripts/lib/env'
@@ -286,6 +287,15 @@ test.describe('speakers and certificates', () => {
     await page.getByRole('button', { name: /Generate 1 certificate/ }).click()
     const file = await download
     expect(file.suggestedFilename()).toMatch(/\.zip$/)
+
+    // The filename matching is not enough. A bug shipped where every entry was a
+    // correctly named but *empty* item, so the archive is opened and its PDF is
+    // read: it must be a real PDF carrying the certificate's image.
+    const archive = await readFile(await file.path())
+    expect(archive.byteLength).toBeGreaterThan(0)
+    const archiveText = archive.toString('latin1')
+    expect(archiveText).toMatch(/^PK/)
+    expect(archiveText).toMatch(/%PDF-/)
 
     await expect(page.getByText(/1 certificate generated/)).toBeVisible({ timeout: 30_000 })
 

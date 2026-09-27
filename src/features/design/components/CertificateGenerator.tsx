@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   Select,
   SelectContent,
@@ -13,11 +13,13 @@ import { Separator } from '@/components/ui/separator'
 import { DesignStudio } from '@/features/design/components/DesignStudio'
 import { FormField } from '@/components/shared/FormField'
 import { ParticipantSelect } from '@/features/design/components/ParticipantSelect'
+import { CertificateTemplateBar } from '@/features/certificates/components/CertificateTemplateBar'
 import { CertificateIssuancePanel } from '@/features/certificates/components/CertificateIssuancePanel'
-import { useCustomTemplateList } from '@/features/design/components/useCustomTemplateList'
 import { CERTIFICATE_TEMPLATES } from '@/features/design/lib/templates'
 import { SAMPLE_PARTICIPANT } from '@/features/design/lib/sampleData'
-import type { CustomTemplateRecord } from '@/features/design/schemas/customTemplate.schema'
+import { loadCertificateTemplates } from '@/features/certificates/templates/loadTemplate'
+import type { DesignTemplate } from '@/features/design/lib/types'
+import type { CertificateTemplate } from '@/features/certificates/services/certificateTemplateService'
 import type { IssuedCertificate } from '@/features/certificates/lib/eligibility'
 import {
   CERTIFICATE_TYPES,
@@ -32,7 +34,7 @@ type CertificateGeneratorProps = {
   event: EventBrand
   participants: readonly ParticipantInfo[]
   checkedInCount: number
-  customTemplates?: readonly CustomTemplateRecord[]
+  customTemplates?: readonly CertificateTemplate[]
   issued?: readonly IssuedCertificate[]
   onIssued?: () => void
 }
@@ -62,11 +64,52 @@ export function CertificateGenerator({
   const [certificateType, setCertificateType] = useState<CertificateType>('Participation')
   const [showEveryone, setShowEveryone] = useState(false)
 
-  const custom = useCustomTemplateList(customTemplates, 'certificate')
+  // Custom templates are decoded from their signed artwork URLs, which is
+  // asynchronous, so the built-ins are usable immediately and the custom ones
+  // join the picker a tick later.
+  //
+  // The result is keyed on the records it came from, so a re-save returns the
+  // fresh list while an unrelated re-render keeps the already-decoded one. The
+  // key is derived rather than stored, so a stale list is never shown.
+  const customKey = customTemplates.map((t) => `${t.id}:${t.updatedAt}`).join(',')
+  const [loaded, setLoaded] = useState<{
+    key: string
+    templates: DesignTemplate<CertificateData>[]
+  }>({ key: '', templates: [] })
+
+  useEffect(() => {
+    if (customTemplates.length === 0) return
+    let cancelled = false
+    void loadCertificateTemplates(customTemplates).then((templates) => {
+      if (!cancelled) setLoaded({ key: customKey, templates })
+    })
+    return () => {
+      cancelled = true
+    }
+    // `customKey` summarises `customTemplates`; depending on the array itself
+    // would re-decode every artwork on each render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [customKey])
 
   // The organizer's own templates are appended to the built-in catalogue, so the
-  // picker, the preview, and both exporters treat them identically.
-  const templates = useMemo(() => [...CERTIFICATE_TEMPLATES, ...custom], [custom])
+  // picker, the preview, and both exporters treat them identically. The key
+  // comparison lives inside the memo so a re-render cannot rebuild the array.
+  const templates = useMemo(
+    () => [...CERTIFICATE_TEMPLATES, ...(loaded.key === customKey ? loaded.templates : [])],
+    [loaded, customKey]
+  )
+
+  /**
+   * Which template the bulk run uses.
+   *
+   * Explicit, and it defaults to the first template rather than the last. The
+   * previous behaviour took the final entry of the combined array, which with any
+   * custom template present meant silently generating everybody's certificate from
+   * the organizer's *oldest* upload.
+   */
+  const [bulkTemplateId, setBulkTemplateId] = useState(CERTIFICATE_TEMPLATES[0]?.id ?? '')
+  const bulkTemplate =
+    templates.find((template) => template.id === bulkTemplateId) ?? templates[0] ?? null
 
   const visible = useMemo(
     () => (showEveryone ? participants : participants.filter((p) => p.checkedIn)),
@@ -92,17 +135,17 @@ export function CertificateGenerator({
     : `${event.name} certificate`
 
   // A single certificate is drawn from whatever record already exists, so its QR
-  // verifies. Before issuance there is no token, and `qrPayload` stays null —
+  // verifies. Before issuance there is no token, and `qrPayload` stays null,
   // which the renderer treats as "no QR" rather than falling back to the
   // recipient's door code.
   const verificationToken = participant
     ? (issued.find((entry) => entry.participantId === participant.id)?.verificationToken ?? null)
     : null
 
-  const bulkTemplate = templates[templates.length - 1] ?? CERTIFICATE_TEMPLATES[0]
-
   return (
     <div className="flex flex-col gap-10">
+      <CertificateTemplateBar eventId={eventId} templates={customTemplates} />
+
       <DesignStudio<CertificateData>
         kind="certificate"
         heading="Certificates"
@@ -180,7 +223,11 @@ export function CertificateGenerator({
           event={event}
           participants={participants}
           issued={issued}
+          templates={templates}
           template={bulkTemplate}
+          onTemplateChange={setBulkTemplateId}
+          certificateType={certificateType}
+          onCertificateTypeChange={setCertificateType}
           onIssued={onIssued}
         />
       )}

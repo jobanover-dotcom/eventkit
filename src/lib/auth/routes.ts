@@ -20,6 +20,13 @@ const ORGANIZER_SECTION_PATTERN =
  * purpose: a visitor must not be redirected away from `/events/x/schedule`.
  */
 const ORGANIZER_DESIGN_PATTERN = /^\/events\/[^/]+\/design\/(badge|certificate|poster|photo-frame)$/
+/**
+ * The custom template editor sits one level deeper than the design sections, so
+ * `ORGANIZER_DESIGN_PATTERN` does not reach it. Without this a signed-out visitor
+ * lands on the editor instead of being sent to sign in; the page re-verifies
+ * ownership regardless, so this is about a coherent experience, not access.
+ */
+const ORGANIZER_DESIGN_EDITOR_PATTERN = /^\/events\/[^/]+\/design\/certificate\/templates\/[^/]+$/
 const ORGANIZER_PARTICIPANT_PATTERN = /^\/events\/[^/]+\/participants\/[^/]+$/
 
 const ORGANIZER_ROUTES = ['/dashboard', '/events/new'] as const
@@ -34,6 +41,7 @@ export function isOrganizerRoute(pathname: string): boolean {
   return (
     ORGANIZER_SECTION_PATTERN.test(pathname) ||
     ORGANIZER_DESIGN_PATTERN.test(pathname) ||
+    ORGANIZER_DESIGN_EDITOR_PATTERN.test(pathname) ||
     ORGANIZER_PARTICIPANT_PATTERN.test(pathname)
   )
 }

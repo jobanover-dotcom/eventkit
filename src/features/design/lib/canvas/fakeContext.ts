@@ -98,6 +98,7 @@ export function createFakeContext(): FakeContext {
     textAlign: CanvasTextAlign
     textBaseline: CanvasTextBaseline
     globalAlpha: number
+    letterSpacing: string
   }
 
   let state: State = {
@@ -108,6 +109,7 @@ export function createFakeContext(): FakeContext {
     textAlign: 'start',
     textBaseline: 'alphabetic',
     globalAlpha: 1,
+    letterSpacing: '0px',
   }
   const stack: State[] = []
 
@@ -167,6 +169,13 @@ export function createFakeContext(): FakeContext {
     set globalAlpha(value: number) {
       state = { ...state, globalAlpha: value }
       record('globalAlpha', value)
+    },
+    get letterSpacing() {
+      return state.letterSpacing
+    },
+    set letterSpacing(value: string) {
+      state = { ...state, letterSpacing: value }
+      record('letterSpacing', value)
     },
 
     save: () => {
@@ -284,6 +293,7 @@ export function createFakeContext(): FakeContext {
         textAlign: 'start',
         textBaseline: 'alphabetic',
         globalAlpha: 1,
+        letterSpacing: '0px',
       }
     },
 

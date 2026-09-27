@@ -14,6 +14,8 @@ describe('isOrganizerRoute', () => {
     '/events/abc123/design/certificate',
     '/events/abc123/design/poster',
     '/events/abc123/design/photo-frame',
+    '/events/abc123/design/certificate/templates/new',
+    '/events/abc123/design/certificate/templates/6f1c2b40-1111-4222-8333-444455556666',
     '/events/abc123/participants',
     '/events/abc123/participants/6f1c2b40-1111-4222-8333-444455556666',
   ])('guards the organizer route %s', (pathname) => {
@@ -59,6 +61,12 @@ describe('isOrganizerRoute', () => {
     '/events/abc123/design/invented',
     '/events/abc123/dashboard/anything',
     '/events/abc123/participants/not-a-uuid/nested',
+    // The editor guard is one template id deep and certificate-only, so an
+    // unserved path under it must not silently become an organizer area.
+    '/events/abc123/design/certificate/templates',
+    '/events/abc123/design/certificate/templates/abc123/extra',
+    '/events/abc123/design/badge/templates/new',
+    '/events/abc123/design/poster/templates/new',
   ])('leaves the public route %s open', (pathname) => {
     expect(isOrganizerRoute(pathname)).toBe(false)
   })

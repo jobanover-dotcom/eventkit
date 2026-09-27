@@ -59,10 +59,17 @@ export type Database = {
       ]
       },
       event_design_templates: {
-        Row: { id: string; event_id: string; name: string; kind: string; storage_path: string; image_width: number; image_height: number; placeholders: Json; created_at: string }
-        Insert: { id?: string; event_id: string; name: string; kind: string; storage_path: string; image_width: number; image_height: number; placeholders?: Json; created_at?: string }
-        Update: { id?: string; event_id?: string; name?: string; kind?: string; storage_path?: string; image_width?: number; image_height?: number; placeholders?: Json; created_at?: string }
+        Row: { id: string; event_id: string; name: string; kind: string; storage_path: string; image_width: number; image_height: number; design_config: Json; created_at: string; created_by: string | null; updated_at: string }
+        Insert: { id?: string; event_id: string; name: string; kind: string; storage_path: string; image_width: number; image_height: number; design_config?: Json; created_at?: string; created_by?: string | null; updated_at?: string }
+        Update: { id?: string; event_id?: string; name?: string; kind?: string; storage_path?: string; image_width?: number; image_height?: number; design_config?: Json; created_at?: string; created_by?: string | null; updated_at?: string }
         Relationships: [
+        {
+          foreignKeyName: "event_design_templates_created_by_fkey";
+          columns: ["created_by"];
+          isOneToOne: false;
+          referencedRelation: "auth.users";
+          referencedColumns: ["id"];
+        },
         {
           foreignKeyName: "event_design_templates_event_id_fkey";
           columns: ["event_id"];

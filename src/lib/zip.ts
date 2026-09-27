@@ -24,7 +24,15 @@ export async function buildZip(entries: readonly ZipEntry[]): Promise<Blob> {
   }
 
   const { downloadZip } = await import('client-zip')
-  return downloadZip(entries).blob()
+
+  // client-zip reads each entry's bytes from an `input` key. An object with a
+  // `name` and no `input` matches its *folder* variant instead, so passing our
+  // own shape straight through yields a well-formed archive of empty entries:
+  // one correctly named empty item per recipient, and no error anywhere. That
+  // failure is invisible, so the mapping is explicit and load-bearing — and the
+  // wrong version still type-checks, because the folder variant accepts any
+  // extra properties.
+  return downloadZip(entries.map(({ name, blob }) => ({ name, input: blob }))).blob()
 }
 
 /**

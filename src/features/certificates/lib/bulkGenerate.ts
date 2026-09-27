@@ -5,9 +5,10 @@ import type {
   EventBrand,
   ParticipantInfo,
 } from '@/features/design/types'
-import type { DesignImages, DesignTemplate } from '@/features/design/lib/types'
+import type { DesignTemplate } from '@/features/design/lib/types'
 import { renderDesign } from '@/features/design/lib/render'
 import { canvasToPdfBlob } from '@/features/design/lib/export'
+import { resolveCertificateImages } from '@/features/certificates/templates/render'
 import { sanitizeFilename } from '@/lib/filename'
 import { buildZip, downloadBlob, type ZipEntry } from '@/lib/zip'
 import { toParticipantType } from '@/lib/participantType'
@@ -65,10 +66,7 @@ export type BulkGenerateResult = {
   filename: string
 }
 
-/** The public URL a certificate's QR points at. Carries only the opaque token. */
-export function certificateVerificationUrl(origin: string, verificationToken: string): string {
-  return `${origin.replace(/\/+$/, '')}/verify/certificate/${verificationToken}`
-}
+export { resolveCertificateImages }
 
 function nextFrame(): Promise<void> {
   return new Promise((resolve) => requestAnimationFrame(() => resolve()))
@@ -98,11 +96,10 @@ export async function generateCertificatesInBulk(
         certificateType,
       }
 
-      const images: DesignImages = {}
-      const qrUrl = certificateVerificationUrl(origin, recipient.verificationToken)
-      const { encodeQr } = await import('@/lib/qr')
-      const qr = await encodeQr(qrUrl, { size: 512 })
-      if (qr) images.qr = qr
+      const images = await resolveCertificateImages({
+        origin,
+        verificationToken: recipient.verificationToken,
+      })
 
       const canvas = await renderDesign(template, data, images, { scale: 1 })
       try {

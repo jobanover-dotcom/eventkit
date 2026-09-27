@@ -33,7 +33,6 @@ import {
 } from '@/features/certificates/lib/eligibility'
 import { issueCertificatesAction } from '@/features/certificates/actions/issueCertificates.action'
 import {
-  certificateVerificationUrl,
   downloadCertificateArchive,
   generateCertificatesInBulk,
   type BulkFailure,
@@ -60,18 +59,26 @@ export function CertificateIssuancePanel({
   event,
   participants,
   issued,
+  templates,
   template,
+  onTemplateChange,
+  certificateType,
+  onCertificateTypeChange,
   onIssued,
 }: {
   eventId: string
   event: EventBrand
   participants: readonly ParticipantInfo[]
   issued: readonly IssuedCertificate[]
+  /** Every selectable template, so the organizer picks rather than inherits. */
+  templates: readonly BulkTemplate[]
   template: BulkTemplate
+  onTemplateChange: (templateId: string) => void
+  certificateType: CertificateType
+  onCertificateTypeChange: (certificateType: CertificateType) => void
   onIssued?: () => void
 }) {
   const [type, setType] = useState<ParticipantType>('PARTICIPANT')
-  const [certificateType, setCertificateType] = useState<CertificateType>('Participation')
   const [showEveryone, setShowEveryone] = useState(false)
   const [selected, setSelected] = useState<string[]>([])
   const [error, setError] = useState<string | null>(null)
@@ -225,10 +232,40 @@ export function CertificateIssuancePanel({
           </div>
         </FormField>
 
-        <FormField label="Certificate" htmlFor="certificate-bulk-type">
+        <FormField
+          label="Template"
+          htmlFor="certificate-bulk-template"
+          hint="Applies to every certificate in this run."
+        >
+          <Select value={template.id} onValueChange={onTemplateChange}>
+            <SelectTrigger id="certificate-bulk-template" className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {templates.map((option) => (
+                <SelectItem key={option.id} value={option.id}>
+                  {option.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </FormField>
+
+        {/* A custom template carries its own wording as pixels, so this choice is
+            never printed on the artwork. It labels the certificate record, which
+            the public verification page shows when the QR is scanned. */}
+        <FormField
+          label="Verification title only"
+          htmlFor="certificate-bulk-type"
+          hint={
+            template.id.startsWith('custom:')
+              ? 'Your uploaded PNG already contains the certificate wording. This title appears on the public verification page and is not printed on the certificate.'
+              : undefined
+          }
+        >
           <Select
             value={certificateType}
-            onValueChange={(next) => setCertificateType(next as CertificateType)}
+            onValueChange={(next) => onCertificateTypeChange(next as CertificateType)}
           >
             <SelectTrigger id="certificate-bulk-type" className="w-full">
               <SelectValue />
@@ -405,5 +442,3 @@ export function CertificateIssuancePanel({
     </Card>
   )
 }
-
-export { certificateVerificationUrl }

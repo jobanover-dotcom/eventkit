@@ -52,11 +52,26 @@ function createCanvas(width: number, height: number): HTMLCanvasElement {
  * Decodes an image and downscales it. A 12MP phone photo would otherwise be
  * drawn at full size and bloat the exported PNG for no visible benefit at print
  * sizes.
+ *
+ * The image is fetched in CORS mode. Without it, drawing a storage image taints
+ * the canvas and every later `toDataURL` throws "Tainted canvases may not be
+ * exported" — which surfaces as a silently *empty* export rather than a missing
+ * one, so it is much easier to miss than an outright failure. It is also the
+ * first feature that unconditionally draws a cross-origin image onto an exported
+ * canvas: the built-in designs are gradients and text, and a logo or cover is
+ * optional.
+ *
+ * The cost is that an image the server will not serve with CORS headers now
+ * fails to load instead of loading opaquely. That is the right way round: such an
+ * image could never be exported anyway, and drawing it taints the canvas for
+ * everything else on the page. Callers already handle `null`.
  */
 export async function loadImage(url: string): Promise<CanvasImageSource | null> {
   try {
     const image = new Image()
     image.decoding = 'async'
+    // Must be set before `src`, or the request is made without it.
+    image.crossOrigin = 'anonymous'
     image.src = url
 
     await image.decode()
@@ -75,8 +90,9 @@ export async function loadImage(url: string): Promise<CanvasImageSource | null> 
     context.drawImage(image, 0, 0, canvas.width, canvas.height)
     return canvas
   } catch {
-    // A logo or cover that will not load must not fail the whole design; the
-    // templates fall back to a monogram or a plain panel.
+    // An image that will not load must not fail the whole design; the templates
+    // fall back to a monogram or a plain panel. A custom certificate background
+    // drops out of the picker instead, which is visible and recoverable.
     return null
   }
 }

@@ -108,51 +108,161 @@ silently short.
 
 ## Custom templates
 
-### The reserved colour
+An organizer can upload their own certificate artwork and place the recipient's
+name on it. This is deliberately **not** a general design tool: a canvas engine,
+image uploads, and arbitrary objects were all considered and rejected as
+disproportionate to the one job this does. The editor places text boxes over a
+finished design, and that is all it does.
 
-An organizer draws a rectangle, fills it with exactly `#00B140` (RGB 0, 177, 64),
-and exports a PNG. Matching is exact: a tolerance would let a colour the designer
-picked to be _close to_ green be silently consumed as a placeholder.
+The scope is certificate-only. The table keeps its `kind` column for future
+editors, but the upload path, the picker, and the management UI are certificates
+and nothing else.
 
-`detectPlaceholders` does not replace matching pixels. It builds a mask, flood
-fills it into connected components with an explicit stack (recursion overflows on
-a full-width region), and keeps only components whose bounding box is 100 % full.
-A shape that is not a solid rectangle produces a **warning**, never a guess —
-silently treating an L-shape as a box would print content across the designer's
-artwork. Regions below 64 px² are skipped as noise.
+### The artwork is used exactly as uploaded
 
-### Mapping
+The organizer's PNG **is** the certificate. EventKit stores the file byte for
+byte and draws it once, full size, at generation time. Nothing is detected,
+sampled, recoloured, cropped, or erased, and no fill is ever painted over it.
 
-The colour says _where_, never _what_, so the organizer assigns each rectangle a
-field. The per-kind catalogue in `fields.ts` supports `TEXT`, `PHOTO`, and `QR`,
-and every field maps to a value that exists in the data model. Optional fields
-resolve to an empty string, so a participant with no organization prints nothing.
+This is a deliberate reversal of an earlier design. That design asked the
+organizer to mark two areas with reserved colours — `#00B140` and `#FF00FF` —
+which EventKit would detect and punch to transparency before using the file as a
+background. The flaw was fundamental: **removing a rectangle cannot reconstruct
+what was underneath it.** On a gradient, a photograph, a texture, or anything
+with fine detail, the erased area became a hole, a blend, or a visible patch. The
+placeholder scheme also pushed work onto the organizer that the editor could have
+done itself, since the organizer was marking a _position_ and EventKit was
+already going to ask for a position.
+
+So the artwork now carries all the static content — the certificate title, the
+event name, the school, the date, the signatures, the borders — and EventKit's
+only job is to write the recipient's name on top. There is no placeholder colour,
+no region detection, and no image processing anywhere in the upload or render
+path. `detect.ts` and `clean.ts` were removed rather than deprecated, and the
+types and tests that described them went with them.
+
+### The model
+
+A custom template is an uploaded PNG plus a list of dynamic text layers.
+
+```jsonc
+{
+  // Vestigial: see the note below. Written to satisfy a CHECK, read by nothing.
+  "recipientName": {},
+  "certificateType": {},
+  "textLayers": [
+    {
+      "id": "recipient-name",
+      "field": "recipientName",
+      "x": 100,
+      "y": 420,
+      "width": 800,
+      "height": 120,
+      "fontFamily": "Lora",
+      "fontSize": 42,
+      "fontWeight": 700,
+      "italic": false,
+      "color": "#111111",
+      "horizontalAlign": "center",
+      "verticalAlign": "middle",
+      "letterSpacing": 0,
+      "lineHeight": 1.1,
+    },
+  ],
+}
+```
+
+`field` is `recipientName` and nothing else. The certificate type is **not** a
+dynamic field for a custom template: it is part of the designer's artwork. A
+second field would be added to `TEXT_LAYER_FIELDS` deliberately, when there is a
+second thing that genuinely varies per recipient.
+
+Several text boxes are permitted and every one of them receives the same
+recipient name — two name boxes on one certificate is a legitimate layout, but
+they are not a way to place the certificate type. `LIMITS.maxTextLayers` bounds
+the work one stored configuration can ask the renderer to do.
+
+**The two vestigial keys.** Migration 0003 attached a `CHECK` to `design_config`
+requiring `recipientName` and `certificateType` to be present as objects, written
+when the editor still located two fixed placeholder rectangles. Storing the clean
+`{ "textLayers": [...] }` shape would fail that constraint on every write, so the
+two keys are still written as empty objects. **No application code reads them.**
+They are optional on read, so a hand-edited row that drops them still loads, and
+the writer always emits them so the live constraint stays satisfied without a
+migration. They are an artefact of an old migration, not a feature.
+
+### The editor
+
+- PNG preview, unchanged by the app.
+- `+ Add Text Box` creates a recipient-name box, centred, with a font size derived
+  from its height. The box shows `Juan Dela Cruz` while it is being arranged; the
+  real name replaces it at generation time.
+- Drag inside the box to move it. A selection shows four corner and four side
+  handles; dragging a corner changes both axes, a side changes only its own.
+  Selection controls disappear when the box is deselected, and a box is
+  deselected by clicking the artwork or pressing Escape.
+- Resizing changes the box and **never** the font size. A wider box and larger
+  type are separate decisions, so the two controls are separate.
+- Typography: family (Inter, Plus Jakarta Sans, Lora, JetBrains Mono — bundled,
+  no system fonts), size, bold, italic, colour, horizontal and vertical
+  alignment, letter spacing, and line height. Long names wrap inside the box and
+  then shrink, and an overflow is reported honestly rather than drawn past the
+  edge.
+- Keyboard equivalents exist for everything pointer-only: a selected box is
+  focusable, moves with the arrow keys (Shift for a larger step), and is removed
+  with Delete. Numeric width and height fields are deliberately absent — the
+  handles are the interface.
+
+### Coordinates
+
+Every stored number is in **original PNG pixels**. The editor is a scaled view of
+the artwork: the background is laid out at the browser's width, and the text-box
+overlay is sized in real image pixels and then CSS-scaled by
+`displayWidth / imageWidth` with `transform-origin: top left`.
+
+That one transform is what makes the whole editor honest. Because the boxes live
+inside a scaled container, a pointer delta converts to image units with a single
+`value / scale`, and the values being dragged are already the values the renderer
+consumes. A 1920×1080 PNG shown at 960×540 stores doubled coordinates. No
+viewport width and no device pixel ratio enters the arithmetic, so a template
+arranged on a laptop produces the same file on a projector.
 
 ### Rendering
 
-`buildCustomTemplate` returns a real `DesignTemplate`, so a custom template is
-appended to the same array as the built-in ones and flows through the existing
+`buildCertificateTemplate` returns a real `DesignTemplate`, so a custom template
+is appended to the same array as the built-ins and flows through the existing
 picker, preview, generate, and export code untouched. There is no second
-renderer.
+renderer. `draw` paints the background once and then draws each configured text
+layer over it with the recipient's name.
 
-Every slot is filled with a background colour **before** anything is drawn into
-it, so the green disappears even for an unmapped or empty placeholder. Text is
-centred and shrunk by `layoutText` until it fits; photos use `drawCover`; a QR is
-drawn as the largest centred square that fits, with the white quiet zone
-`drawQr` always provides.
+`fitLayerText` is shared with the editor's preview, so a name that wraps in the
+browser wraps in the PDF.
+
+### Certificate type on a custom template
+
+The certificate **record** still has a `certificate_type`: the column is `NOT
+NULL` and constrained, and the public verification page publishes it as the
+certificate's title. The organizer therefore still chooses one, and the bulk panel
+labels it _Verification title only_ with a note that it is not printed on the
+artwork — the wording in the certificate is the designer's pixels. Nothing is
+defaulted or fabricated on the organizer's behalf, and the custom renderer never
+reads it.
 
 ### Storage
 
 Artwork lives in a **private** `event-templates` bucket at
-`{organizer_id}/{event_id}/templates/{uuid}.png`, read through short-lived signed
+`{organizer_id}/{event_id}/templates/{uuid}.png`, read through 30-minute signed
 URLs. Unlike `event-assets`, no public URL for a template ever exists. Insert
 policies check that the first path segment is the caller _and_ that the second is
 an event they own, so a valid first segment alone cannot write into somebody
-else's folder.
+else's folder. The 5 MB cap, the PNG byte sniff, the 64–8000 px dimension range,
+and the orphan cleanup on a failed row write are unchanged by this design.
 
 The bytes are sniffed, not trusted: `File.type` is browser-supplied, so the PNG
 signature is the real check. PSD and PDF are rejected with a message pointing at
-"export as PNG" rather than being parsed.
+"export as PNG" rather than being parsed. Reported dimensions are range-checked
+because that value is untrusted too — a hostile client could otherwise ask the
+renderer for a canvas larger than a browser will allocate.
 
 ## Security summary
 
@@ -171,8 +281,15 @@ signature is the real check. PSD and PDF are rejected with a message pointing at
   override (see above).
 - Bulk generation is browser-side, so a very large event is slow and the tab
   must stay open.
-- Custom templates are PNG only. A placeholder rectangle must be filled exactly;
-  an outlined or transparent one is skipped with a warning.
+- Custom templates are PNG only.
+- The editor is a text-box placer, not a design tool. Image uploads, rotation,
+  shapes, and a QR the organizer places by hand are all absent, and the
+  verification QR has a fixed bottom-right position because the artwork is
+  arbitrary and no safe area can be found without the organizer marking one. A
+  design that fills that corner will have the code drawn over it.
+- A certificate record still carries a certificate type, which the verification
+  page publishes. For a custom template it labels the record only; the wording on
+  the certificate itself is the designer's.
 - Speaker title and organization are not shown on the public event page.
 - The verification page shows the recipient's name, which is a deliberate
   disclosure: the certificate is a public claim about that person.

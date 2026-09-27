@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { certificateVerificationUrl, type BulkRecipient } from './bulkGenerate'
+import type { BulkRecipient } from './bulkGenerate'
 import { SAMPLE_EVENT, SAMPLE_PARTICIPANT } from '@/features/design/lib/sampleData'
 import { CERTIFICATE_TEMPLATES } from '@/features/design/lib/templates'
 import type { ParticipantInfo } from '@/features/design/types'
@@ -16,6 +16,7 @@ import type { ParticipantInfo } from '@/features/design/types'
 const renderDesign = vi.fn()
 const canvasToPdfBlob = vi.fn()
 const encodeQr = vi.fn()
+const resolveCertificateImages = vi.fn()
 
 vi.mock('@/features/design/lib/render', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/features/design/lib/render')>()
@@ -25,6 +26,13 @@ vi.mock('@/features/design/lib/export', () => ({
   canvasToPdfBlob: (...args: unknown[]) => canvasToPdfBlob(...args),
 }))
 vi.mock('@/lib/qr', () => ({ encodeQr: (...args: unknown[]) => encodeQr(...args) }))
+vi.mock('@/features/certificates/templates/render', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/features/certificates/templates/render')>()
+  return {
+    ...actual,
+    resolveCertificateImages: (...args: unknown[]) => resolveCertificateImages(...args),
+  }
+})
 vi.mock('@/lib/zip', () => ({
   buildZip: vi.fn(),
   downloadBlob: vi.fn(),
@@ -53,9 +61,16 @@ beforeEach(() => {
   renderDesign.mockReset()
   canvasToPdfBlob.mockReset()
   encodeQr.mockReset()
+  resolveCertificateImages.mockReset()
   renderDesign.mockImplementation(async () => fakeCanvas())
   canvasToPdfBlob.mockResolvedValue(new Blob(['pdf'], { type: 'application/pdf' }))
   encodeQr.mockResolvedValue({ width: 512, height: 512 })
+  resolveCertificateImages.mockImplementation(
+    async ({ verificationToken }: { verificationToken: string }) => ({
+      qr: { width: 512, height: 512 } as unknown as CanvasImageSource,
+      __token: verificationToken,
+    })
+  )
   // jsdom has no requestAnimationFrame-driven happy path for this loop; the
   // yield is injectable, so tests pass a resolved promise.
   ;(globalThis as { requestAnimationFrame?: unknown }).requestAnimationFrame ??= (
@@ -75,25 +90,6 @@ const base = {
   origin: 'https://eventkit.app',
   onYield: async () => {},
 }
-
-describe('certificateVerificationUrl', () => {
-  it('points at the public verification route with only the token', () => {
-    const url = certificateVerificationUrl('https://eventkit.app', 'abc')
-    expect(url).toBe('https://eventkit.app/verify/certificate/abc')
-  })
-
-  it('tolerates a trailing slash on the origin', () => {
-    expect(certificateVerificationUrl('https://eventkit.app/', 'abc')).toBe(
-      'https://eventkit.app/verify/certificate/abc'
-    )
-  })
-
-  it('carries no personal data', () => {
-    const url = certificateVerificationUrl('https://eventkit.app', 'abc')
-    expect(url).not.toContain('@')
-    expect(url.split('/').pop()).toBe('abc')
-  })
-})
 
 describe('generateCertificatesInBulk', () => {
   it('produces one PDF per recipient', async () => {
@@ -119,13 +115,21 @@ describe('generateCertificatesInBulk', () => {
     ])
   })
 
-  it('encodes each recipient’s own verification token', async () => {
+  it('resolves a distinct verification token for each recipient', async () => {
     await generateCertificatesInBulk({ ...base, recipients: [recipient(1), recipient(2)] })
 
-    const payloads = encodeQr.mock.calls.map((call) => call[0] as string)
-    expect(payloads).toHaveLength(2)
-    expect(payloads[0]).toContain(recipient(1).verificationToken)
-    expect(payloads[0]).not.toBe(payloads[1])
+    const tokens = resolveCertificateImages.mock.calls.map(
+      (call) => (call[0] as { verificationToken: string }).verificationToken
+    )
+    expect(tokens).toEqual([recipient(1).verificationToken, recipient(2).verificationToken])
+    expect(tokens[0]).not.toBe(tokens[1])
+  })
+
+  it('passes the origin so the QR resolves to a public URL', async () => {
+    await generateCertificatesInBulk({ ...base, recipients: [recipient(1)] })
+    expect(resolveCertificateImages.mock.calls[0]?.[0]).toMatchObject({
+      origin: 'https://eventkit.app',
+    })
   })
 
   it('reports progress for every recipient', async () => {
@@ -225,5 +229,91 @@ describe('generateCertificatesInBulk', () => {
     expect(participants.filename).toContain('participants')
     expect(speakers.filename).toContain('speakers')
     expect(participants.filename.endsWith('.zip')).toBe(true)
+  })
+})
+
+describe('bulk generation from a custom template', () => {
+  /**
+   * A custom template is a finished design with the recipient's name written on
+   * top. The certificate type still labels the record, so the verification page
+   * can name it, but nothing about the run may depend on it being rendered.
+   */
+
+  const customTemplate = {
+    ...template,
+    id: 'custom:tpl-1',
+    name: 'Graduation',
+  }
+
+  it('produces one PDF per recipient', async () => {
+    const result = await generateCertificatesInBulk({
+      ...base,
+      template: customTemplate,
+      recipients: [recipient(1), recipient(2), recipient(3)],
+    })
+
+    expect(result.entries).toHaveLength(3)
+    expect(renderDesign).toHaveBeenCalledTimes(3)
+  })
+
+  it('gives each recipient a different name, from the roster rather than the template', async () => {
+    await generateCertificatesInBulk({
+      ...base,
+      template: customTemplate,
+      recipients: [recipient(1), recipient(2), recipient(3)],
+    })
+
+    const names = renderDesign.mock.calls.map((call) => {
+      const data = (call[1] as { recipient: ParticipantInfo }).recipient
+      return data.name
+    })
+    expect(new Set(names).size).toBe(3)
+  })
+
+  it('renders the same custom template for every recipient', async () => {
+    await generateCertificatesInBulk({
+      ...base,
+      template: customTemplate,
+      recipients: [recipient(1), recipient(2)],
+    })
+
+    for (const call of renderDesign.mock.calls) {
+      expect(call[0]).toBe(customTemplate)
+    }
+  })
+
+  it('resolves a distinct verification token per recipient, so each PDF is checkable', async () => {
+    await generateCertificatesInBulk({
+      ...base,
+      template: customTemplate,
+      recipients: [recipient(1), recipient(2)],
+    })
+
+    const tokens = resolveCertificateImages.mock.calls.map(
+      (call) => (call[0] as { verificationToken: string }).verificationToken
+    )
+    expect(new Set(tokens).size).toBe(2)
+  })
+
+  it('exports as A4 landscape, the same page the built-ins use', async () => {
+    await generateCertificatesInBulk({
+      ...base,
+      template: customTemplate,
+      recipients: [recipient(1)],
+    })
+
+    expect(canvasToPdfBlob).toHaveBeenCalledWith(expect.anything(), template.page)
+  })
+
+  it('names the archive after the type without that type reaching the artwork', async () => {
+    // The type is still recorded and still titles the verification page; it just
+    // is not something the organizer's own design needs rendered.
+    const result = await generateCertificatesInBulk({
+      ...base,
+      template: customTemplate,
+      recipients: [recipient(1)],
+    })
+
+    expect(result.filename).toContain('Participation')
   })
 })

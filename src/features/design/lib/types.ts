@@ -34,6 +34,9 @@ export type DrawContext = Pick<
   | 'drawImage'
   | 'setLineDash'
   | 'font'
+  // Canvas letter spacing. Ignored by browsers that do not implement it, which
+  // degrades to normal tracking rather than breaking the render.
+  | 'letterSpacing'
   | 'fillStyle'
   | 'strokeStyle'
   | 'lineWidth'

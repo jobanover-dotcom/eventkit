@@ -117,9 +117,16 @@ describe('verifyCertificateToken', () => {
   })
 
   it('falls back to a generic title for a type with no preset', async () => {
-    rpc.mockResolvedValue({ data: [{ ...ROW, certificate_type: 'Winner' }], error: null })
-    // 'Winner' is a stored value with no matching preset, so it must not throw.
+    rpc.mockResolvedValue({ data: [{ ...ROW, certificate_type: 'Merit' }], error: null })
+    // Every type the product offers has a preset, so an unknown stored value must
+    // still render something rather than throwing.
     const result = await verifyCertificateToken('a'.repeat(64))
-    expect(result?.certificateTitle).toBe('Certificate of Winner')
+    expect(result?.certificateTitle).toBe('Certificate of Merit')
+  })
+
+  it('uses the shared wording for Winner', async () => {
+    rpc.mockResolvedValue({ data: [{ ...ROW, certificate_type: 'Winner' }], error: null })
+    const result = await verifyCertificateToken('a'.repeat(64))
+    expect(result?.certificateTitle).toBe("Certificate of Winner's Distinction")
   })
 })

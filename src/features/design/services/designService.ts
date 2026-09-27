@@ -9,8 +9,10 @@ import {
 } from '@/features/participants/repositories/participantRepository'
 import { selectEventAttendance } from '@/features/attendance/repositories/attendanceRepository'
 import type { EventBrand, ParticipantInfo } from '@/features/design/types'
-import type { CustomTemplateRecord } from '@/features/design/schemas/customTemplate.schema'
-import { listCustomTemplates } from '@/features/design/services/customTemplateService'
+import {
+  listCertificateTemplates,
+  type CertificateTemplate,
+} from '@/features/certificates/services/certificateTemplateService'
 
 /**
  * Everything the Design module needs, loaded once per page and authorized once.
@@ -26,11 +28,11 @@ export type DesignContext = {
   participants: ParticipantInfo[]
   checkedInCount: number
   /**
-   * Organizer-uploaded templates, as plain records. The artwork URL is a
-   * short-lived signed link from the private bucket; nothing here is a public
-   * asset URL.
+   * Organizer-uploaded certificate templates, as plain records. The artwork URL
+   * is a short-lived signed link from the private bucket; nothing here is a
+   * public asset URL.
    */
-  customTemplates: CustomTemplateRecord[]
+  customTemplates: CertificateTemplate[]
 }
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
@@ -92,7 +94,7 @@ export async function getDesignContext(eventId: string): Promise<DesignContext> 
     selectEventAttendance(client, eventId),
     // A failure here must not take the whole page down: the built-in templates
     // still work, so custom templates are treated as an optional extra.
-    listCustomTemplates(event.id).catch(() => [] as CustomTemplateRecord[]),
+    listCertificateTemplates(event.id).catch(() => [] as CertificateTemplate[]),
   ])
 
   const checkedInParticipantIds = new Set(attendance.map((row) => row.participant_id))

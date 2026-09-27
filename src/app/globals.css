@@ -2,6 +2,10 @@
    in sync with the --font-* values below. */
 @import '@fontsource-variable/inter';
 @import '@fontsource-variable/plus-jakarta-sans';
+/* Custom certificate templates. Every family is bundled rather than system, so a
+   certificate renders identically wherever it is generated. See src/config/fonts.ts. */
+@import '@fontsource-variable/lora';
+@import '@fontsource-variable/jetbrains-mono';
 
 @import 'tailwindcss';
 @import 'tw-animate-css';
@@ -14,6 +18,8 @@
   --font-sans: 'Inter Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-heading:
     'Plus Jakarta Sans Variable', 'Inter Variable', ui-sans-serif, system-ui, sans-serif;
+  --font-serif: 'Lora Variable', ui-serif, Georgia, serif;
+  --font-mono: 'JetBrains Mono Variable', ui-monospace, SFMono-Regular, monospace;
 
   --background: oklch(0.995 0.004 286);
   --foreground: oklch(0.21 0.03 286);

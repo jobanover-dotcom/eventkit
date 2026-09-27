@@ -1000,9 +1000,11 @@ select is(
 
 select pg_temp.raises_state(
   $$ insert into public.event_design_templates
-       (event_id, name, kind, storage_path, image_width, image_height, placeholders)
+       (event_id, name, kind, storage_path, image_width, image_height, design_config, created_by)
      values ('e0000000-0000-4000-8000-000000000001'::uuid, 'Theirs', 'certificate',
-             'a/b/templates/c.png', 800, 600, '[]'::jsonb) $$,
+             'a/b/templates/c.png', 800, 600,
+             '{"recipientName":{},"certificateType":{}}'::jsonb,
+             '00000000-0000-4000-8000-000000000002'::uuid) $$,
   '42501',
   'a stranger cannot add a custom template to another organizer''s event'
 );
@@ -1049,6 +1051,134 @@ select is(
   'a stranger sees no template objects'
 );
 
+-- ---------------------------------------------------------------------------
+-- 20260926000003: the certificate template configuration
+-- ---------------------------------------------------------------------------
+
+-- The owner can store a template, and the audit trail records them.
+select is(
+  (select count(*)::int
+     from public.event_design_templates
+     where event_id = 'e0000000-0000-4000-8000-000000000001'::uuid),
+  0,
+  'the owner starts with no custom templates'
+);
+
+insert into public.event_design_templates (
+  event_id, name, kind, storage_path, image_width, image_height, design_config, created_by
+)
+values (
+  'e0000000-0000-4000-8000-000000000001'::uuid, 'Graduation', 'certificate',
+  'x/y/templates/g.png', 1920, 1080,
+  '{"recipientName":{},"certificateType":{}}'::jsonb,
+  '00000000-0000-4000-8000-000000000001'::uuid
+);
+
+select is(
+  (select created_by from public.event_design_templates where name = 'Graduation'),
+  '00000000-0000-4000-8000-000000000001'::uuid,
+  'a template records its creator'
+);
+
+-- `created_by` is set server-side from the session, so a client cannot claim
+-- authorship on somebody else's behalf. The INSERT policy's WITH CHECK is the
+-- enforcement point; the service simply never sends a value that would fail it.
+select pg_temp.raises_state(
+  $$ insert into public.event_design_templates
+       (event_id, name, kind, storage_path, image_width, image_height, design_config, created_by)
+     values ('e0000000-0000-4000-8000-000000000001'::uuid, 'Forged', 'certificate',
+             'x/y/templates/f.png', 1920, 1080,
+             '{"recipientName":{},"certificateType":{}}'::jsonb,
+             '00000000-0000-4000-8000-000000000002'::uuid) $$,
+  '42501',
+  'a template cannot be inserted with somebody else as its creator'
+);
+
+select pg_temp.raises_state(
+  $$ insert into public.event_design_templates
+       (event_id, name, kind, storage_path, image_width, image_height, design_config)
+     values ('e0000000-0000-4000-8000-000000000001'::uuid, 'Anonymous', 'certificate',
+             'x/y/templates/n.png', 1920, 1080,
+             '{"recipientName":{},"certificateType":{}}'::jsonb) $$,
+  '42501',
+  'a template cannot be inserted without a creator'
+);
+
+-- The two layers are the contract the renderer relies on, so a shape it cannot
+-- read is refused by the database and not merely by the application.
+select pg_temp.raises_state(
+  $$ update public.event_design_templates set design_config = '[]'::jsonb
+     where name = 'Graduation' $$,
+  '23514',
+  'the legacy placeholder array is refused'
+);
+
+select pg_temp.raises_state(
+  $$ update public.event_design_templates
+     set design_config = '{"recipientName":{}}'::jsonb where name = 'Graduation' $$,
+  '23514',
+  'a configuration missing a layer is refused'
+);
+
+select is(
+  (select design_config ? 'certificateType'
+     from public.event_design_templates where name = 'Graduation'),
+  true,
+  'the stored configuration survived the refused updates'
+);
+
+-- `set_updated_at` stamps `now()`, which is fixed for the whole transaction, so
+-- the bump cannot be observed here. Assert the trigger is wired up instead; the
+-- bump itself is exercised by the application's own round trips.
+select ok(
+  exists (
+    select 1 from pg_trigger
+    where tgrelid = 'public.event_design_templates'::regclass
+      and tgname = 'set_event_design_templates_updated_at'
+      and not tgisinternal
+  ),
+  'editing a template is stamped with updated_at'
+);
+
+-- ---------------------------------------------------------------------------
+-- 20260926000004: RLS chooses which *rows* an organizer may touch, never which
+-- columns, so the audit trail and the private object pointer were rewritable
+-- until UPDATE was narrowed to the two columns the product actually sends.
+-- ---------------------------------------------------------------------------
+
+select pg_temp.raises_state(
+  $$ update public.event_design_templates set created_by =
+       '00000000-0000-4000-8000-000000000002'::uuid where name = 'Graduation' $$,
+  '42501',
+  'an organizer cannot reassign a template to another creator'
+);
+
+select pg_temp.raises_state(
+  $$ update public.event_design_templates
+     set storage_path = 'someone/else/templates/secret.png' where name = 'Graduation' $$,
+  '42501',
+  'an organizer cannot repoint a template at another private object'
+);
+
+select pg_temp.raises_state(
+  $$ update public.event_design_templates set kind = 'badge' where name = 'Graduation' $$,
+  '42501',
+  'an organizer cannot change a template''s kind'
+);
+
+-- The narrowing must not take away the path the product uses.
+select lives_ok(
+  $$ update public.event_design_templates set name = 'Graduation blue' where name = 'Graduation' $$,
+  'an organizer can still rename a template'
+);
+
+select lives_ok(
+  $$ update public.event_design_templates
+     set design_config = '{"recipientName":{"x":10},"certificateType":{"x":20}}'::jsonb
+     where name = 'Graduation blue' $$,
+  'an organizer can still save a new layout'
+);
+
 select pg_temp.as_anon();
 set local role anon;
 
@@ -1063,6 +1193,136 @@ select pg_temp.raises_state(
      values ('event-templates', 'x/y/templates/z.png') $$,
   '42501',
   'anonymous cannot write to the private template bucket'
+);
+
+-- ---------------------------------------------------------------------------
+-- 20260926000002: the template bucket is WRITABLE by its owner
+-- ---------------------------------------------------------------------------
+--
+-- Everything above only ever proves that *other* people are kept out. A policy
+-- that denied everybody would satisfy all of it, which is exactly what happened:
+-- an organizer upload failed with "new row violates row-level security policy"
+-- while every assertion here stayed green. So the owner side is now asserted
+-- explicitly, against a policy whose check reaches across into an RLS-protected
+-- table.
+--
+-- The predicate is also decomposed, because the cross-table clause is the only
+-- thing distinguishing this bucket from `event-assets` and `participant-photos`,
+-- whose insert policies are just bucket + first path segment. If the insert below
+-- is refused, these three say which part of the check was at fault.
+
+select pg_temp.as_owner();
+set local role authenticated;
+
+-- The two values the policy compares against, asserted on the exact shape the
+-- application writes: {organizer_id}/{event_id}/templates/{uuid}.png
+select is(
+  (select (storage.foldername(
+     '00000000-0000-4000-8000-000000000001/'
+     || 'e0000000-0000-4000-8000-000000000001/templates/x.png'))[1]),
+  '00000000-0000-4000-8000-000000000001'::text,
+  'the first path segment is the organizer'
+);
+
+select is(
+  (select (storage.foldername(
+     '00000000-0000-4000-8000-000000000001/'
+     || 'e0000000-0000-4000-8000-000000000001/templates/x.png'))[2]),
+  'e0000000-0000-4000-8000-000000000001'::text,
+  'the second path segment is the event'
+);
+
+-- The cross-table clause, evaluated exactly as the policy writes it. This is the
+-- assertion that distinguishes "the owner cannot write" from "the owner cannot
+-- write *because the subquery finds nothing*".
+select ok(
+  exists (
+    select 1 from public.events e
+    where e.id::text = (storage.foldername(
+            '00000000-0000-4000-8000-000000000001/'
+            || 'e0000000-0000-4000-8000-000000000001/templates/x.png'))[2]
+      and e.organizer_id = (select auth.uid())
+  ),
+  'the owner''s own event is found by the policy''s cross-table check'
+);
+
+-- The mechanism, recorded so it cannot be reintroduced by accident. This is the
+-- exact expression 0002 deployed: inside the subquery, `name` bound to the event
+-- *title*, so foldername sliced a one-element array and segment 2 was NULL --
+-- which made EXISTS unsatisfiable and the whole check vacuous.
+select is(
+  (select (storage.foldername(e.name))[2]
+     from public.events e
+     where e.id = 'e0000000-0000-4000-8000-000000000001'::uuid),
+  null,
+  'the 0002 form reads the event title, so segment 2 is never a path'
+);
+
+-- The control: `event-assets` uses the simpler insert policy, and the map upload
+-- is known to work. If this passes, the role, the session, and `auth.uid()` are
+-- all fine here, which isolates any failure to the extra clause.
+select lives_ok(
+  $$ insert into storage.objects (bucket_id, name)
+     values ('event-assets',
+             '00000000-0000-4000-8000-000000000001/'
+             || 'e0000000-0000-4000-8000-000000000001/m.png') $$,
+  'the owner can write to the simpler event-assets bucket'
+);
+
+-- The reproduction. This is the upload that failed in production.
+select lives_ok(
+  $$ insert into storage.objects (bucket_id, name)
+     values ('event-templates',
+             '00000000-0000-4000-8000-000000000001/'
+             || 'e0000000-0000-4000-8000-000000000001/templates/x.png') $$,
+  'the owner can store a template object'
+);
+
+-- The update policy carries the same cross-table clause, so it needs a stored
+-- object to mean anything. `lives_ok` alone would pass while updating nothing,
+-- so the rename is confirmed by counting the row afterwards.
+select lives_ok(
+  $$ update storage.objects set name =
+       '00000000-0000-4000-8000-000000000001/'
+       || 'e0000000-0000-4000-8000-000000000001/templates/renamed.png'
+     where bucket_id = 'event-templates'
+       and name = '00000000-0000-4000-8000-000000000001/'
+                 || 'e0000000-0000-4000-8000-000000000001/templates/x.png' $$,
+  'the owner can rename a template object'
+);
+
+select is(
+  (select count(*)::int from storage.objects
+     where bucket_id = 'event-templates' and name like '%templates/renamed.png'),
+  1,
+  'the rename actually landed on a stored object'
+);
+
+-- Replacing a policy must not turn it into a blanket allow. Both of these are
+-- refused, and the second is the one that matters: the first path segment is the
+-- stranger's own, so only the cross-table clause stands between them and the
+-- owner's event folder. That clause was vacuous while it was misbound, so this
+-- is the assertion that proves the repair restored a real check rather than
+-- removing one.
+select pg_temp.as_stranger();
+set local role authenticated;
+
+select pg_temp.raises_state(
+  $$ insert into storage.objects (bucket_id, name)
+     values ('event-templates',
+             '00000000-0000-4000-8000-000000000001/'
+             || 'e0000000-0000-4000-8000-000000000001/templates/intruder.png') $$,
+  '42501',
+  'a stranger cannot write into another organizer''s template folder'
+);
+
+select pg_temp.raises_state(
+  $$ insert into storage.objects (bucket_id, name)
+     values ('event-templates',
+             '00000000-0000-4000-8000-000000000002/'
+             || 'e0000000-0000-4000-8000-000000000001/templates/intruder.png') $$,
+  '42501',
+  'a stranger cannot claim an event folder they do not own'
 );
 
 select * from finish();

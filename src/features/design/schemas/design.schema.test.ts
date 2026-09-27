@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
   BADGE_ROLES,
@@ -41,14 +43,27 @@ describe('certificate presets', () => {
     }
   })
 
-  it('has the five types the scope asks for', () => {
-    expect([...CERTIFICATE_TYPES]).toEqual([
-      'Participation',
-      'Completion',
-      'Appreciation',
-      'Recognition',
-      'Achievement',
-    ])
+  it('offers exactly the certificate types the database accepts', () => {
+    // The `certificates_certificate_type_check` constraint in
+    // 20260926000002_speakers_and_certificates.sql is the authority. The UI list
+    // drifted from it once already: Winner was in the constraint and in no
+    // dropdown, so it was unreachable from the product.
+    expect([...CERTIFICATE_TYPES].sort()).toEqual(
+      ['Participation', 'Completion', 'Recognition', 'Appreciation', 'Achievement', 'Winner'].sort()
+    )
+  })
+
+  it('reads its type list from the migration, so the two cannot drift again', () => {
+    const migration = readFileSync(
+      resolve('supabase/migrations/20260926000002_speakers_and_certificates.sql'),
+      'utf8'
+    )
+    const check = migration.match(/check \(\s*certificate_type in \(([\s\S]*?)\)\s*\)/)?.[1]
+
+    expect(check, 'the CHECK constraint was not found in the migration').toBeDefined()
+
+    const sqlTypes = [...(check as string).matchAll(/'([^']+)'/g)].map((match) => match[1])
+    expect(sqlTypes.sort()).toEqual([...CERTIFICATE_TYPES].sort())
   })
 
   it('gives each type a distinct title', () => {
