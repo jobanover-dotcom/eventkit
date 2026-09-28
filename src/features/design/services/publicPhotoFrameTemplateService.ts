@@ -1,8 +1,7 @@
 import 'server-only'
 import { createClient } from '@/lib/supabase/server'
 import { logger } from '@/lib/logger'
-import { defaultPhotoFrameConfig } from '@/features/design/schemas/photoFrameConfig'
-import type { PhotoFrameTemplate } from '@/features/design/services/photoFrameTemplateService'
+import type { LoadablePhotoFrame } from '@/features/design/lib/templates/loadPhotoFrameTemplate'
 
 /**
  * The public read of an organizer's custom photo frames.
@@ -56,7 +55,7 @@ type PublicFrameRow = {
  */
 export async function listPublicPhotoFrameTemplates(
   eventId: string
-): Promise<PhotoFrameTemplate[]> {
+): Promise<LoadablePhotoFrame[]> {
   const client = await createClient()
 
   const { data, error } = await client.rpc('get_public_photo_frame_templates', {
@@ -75,7 +74,7 @@ export async function listPublicPhotoFrameTemplates(
   }
 
   const rows = (data ?? []) as PublicFrameRow[]
-  const templates: PhotoFrameTemplate[] = []
+  const templates: LoadablePhotoFrame[] = []
 
   for (const row of rows) {
     const { data: signed, error: signError } = await client.storage
@@ -96,17 +95,12 @@ export async function listPublicPhotoFrameTemplates(
       // rather than trusted as already-numeric.
       imageWidth: Number(row.image_width),
       imageHeight: Number(row.image_height),
-      // A frame's photo area is derived from the artwork at render time, so this
-      // is the contract key colour and nothing more. It is the same value the
-      // organizer path stores, kept so both paths hand the loader one shape.
-      designConfig: defaultPhotoFrameConfig(),
       signedUrl: signed.signedUrl,
       // Coerced rather than assigned: the generated type says `string`, which is
       // what supabase-js returns over JSON, but a Postgres driver would hand back
       // a Date. The value is only ever read as part of the reload key, and
       // asserting the shape we depend on is cheaper than debugging a `[object
       // Object]` in a template key later.
-      createdAt: String(row.updated_at),
       updatedAt: String(row.updated_at),
     })
   }

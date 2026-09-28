@@ -62,9 +62,18 @@ describe('listPublicPhotoFrameTemplates', () => {
       signedUrl: 'https://signed.example/a.png',
       updatedAt: '2026-09-27T10:00:00.000Z',
     })
-    // The renderer needs a config, and a frame's photo area is derived from the
-    // artwork, so this is the contract key colour and carries no claim.
-    expect(template?.designConfig.photoFrame.keyColor).toBe('#22ff00')
+    // Nothing a visitor does not need to draw their own frame.
+    expect(Object.keys(template ?? {}).sort()).toEqual([
+      'id',
+      'imageHeight',
+      'imageWidth',
+      'name',
+      'signedUrl',
+      'updatedAt',
+    ])
+    // Deliberately no `designConfig`: the loader never reads it, and on a public
+    // page it would be serialized into the HTML every visitor receives.
+    expect(template).not.toHaveProperty('designConfig')
   })
 
   it('yields a string timestamp, whichever driver supplied it', async () => {

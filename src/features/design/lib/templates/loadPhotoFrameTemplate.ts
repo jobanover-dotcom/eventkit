@@ -8,6 +8,24 @@ import {
 import type { PhotoFrameTemplate } from '@/features/design/services/photoFrameTemplateService'
 
 /**
+ * Everything the browser needs to turn a stored frame into a drawable template.
+ *
+ * Narrower than the organizer's `PhotoFrameTemplate` on purpose. The loader
+ * never reads `designConfig` — a frame's photo area is derived from the artwork's
+ * pixels, not from the stored column — so demanding it would only push a value
+ * the renderer ignores across the network. On the public page that value would
+ * also be serialized into the HTML every visitor receives, which is more than
+ * they need to make their own photo.
+ *
+ * A full organizer record still satisfies this structurally, so both paths share
+ * one loader unchanged.
+ */
+export type LoadablePhotoFrame = Pick<
+  PhotoFrameTemplate,
+  'id' | 'name' | 'imageWidth' | 'imageHeight' | 'signedUrl' | 'updatedAt'
+>
+
+/**
  * Turns a stored frame into a live `DesignTemplate` in the browser.
  *
  * The records are fetched on the server and passed down as props — the storage
@@ -32,7 +50,7 @@ import type { PhotoFrameTemplate } from '@/features/design/services/photoFrameTe
  * break the photo frame page.
  */
 export async function loadPhotoFrameTemplate(
-  template: PhotoFrameTemplate
+  template: LoadablePhotoFrame
 ): Promise<DesignTemplate<PhotoFrameData> | null> {
   const frame = await loadImage(template.signedUrl)
   if (!frame) return null
@@ -48,7 +66,7 @@ export async function loadPhotoFrameTemplate(
 }
 
 export async function loadPhotoFrameTemplates(
-  templates: readonly PhotoFrameTemplate[]
+  templates: readonly LoadablePhotoFrame[]
 ): Promise<DesignTemplate<PhotoFrameData>[]> {
   const loaded = await Promise.all(templates.map((template) => loadPhotoFrameTemplate(template)))
   return loaded.filter((template): template is DesignTemplate<PhotoFrameData> => template !== null)

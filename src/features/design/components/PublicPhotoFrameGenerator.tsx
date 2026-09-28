@@ -6,9 +6,11 @@ import { Card, CardContent } from '@/components/ui/card'
 import { DesignStudio } from '@/features/design/components/DesignStudio'
 import { FormField } from '@/components/shared/FormField'
 import { PHOTO_FRAME_TEMPLATES } from '@/features/design/lib/templates'
-import { loadPhotoFrameTemplates } from '@/features/design/lib/templates/loadPhotoFrameTemplate'
+import {
+  loadPhotoFrameTemplates,
+  type LoadablePhotoFrame,
+} from '@/features/design/lib/templates/loadPhotoFrameTemplate'
 import { ACCEPTED_PHOTO_TYPES, usePhotoPicker } from '@/features/design/components/usePhotoPicker'
-import type { PhotoFrameTemplate } from '@/features/design/services/photoFrameTemplateService'
 import type { DesignTemplate } from '@/features/design/lib/types'
 import type { EventBrand, PhotoFrameData } from '@/features/design/types'
 
@@ -19,7 +21,7 @@ type PublicPhotoFrameGeneratorProps = {
    * when the organizer has not uploaded any, which is not an error: the built-in
    * frames are the ones everybody gets.
    */
-  customFrames?: readonly PhotoFrameTemplate[]
+  customFrames?: readonly LoadablePhotoFrame[]
 }
 
 /**
