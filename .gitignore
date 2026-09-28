@@ -44,3 +44,8 @@ postgres-data/
 # Supabase
 .supabase/
 supabase/.temp/
+
+# Vercel
+# `vercel link` writes .vercel/project.json, which holds the project and org id.
+# It is per-developer local state, and Vercel's own docs say to ignore it.
+.vercel
