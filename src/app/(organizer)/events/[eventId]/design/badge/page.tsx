@@ -21,5 +21,7 @@ export default async function BadgePage({ params }: BadgePageProps) {
     notFoundUnlessHidden(error)
   }
 
-  return <BadgeGenerator event={context.event} participants={context.participants} />
+  return (
+    <BadgeGenerator eventId={eventId} event={context.event} participants={context.participants} />
+  )
 }
