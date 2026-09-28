@@ -43,6 +43,9 @@ export type DrawContext = Pick<
   | 'textAlign'
   | 'textBaseline'
   | 'globalAlpha'
+  // Canvas compositing. A custom photo frame needs `destination-in` to apply an
+  // arbitrary mask to a layer, which no other template composes.
+  | 'globalCompositeOperation'
 >
 
 /**

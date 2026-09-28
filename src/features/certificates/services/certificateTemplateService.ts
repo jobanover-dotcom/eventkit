@@ -1,50 +1,42 @@
 import 'server-only'
-import type { SupabaseClient } from '@supabase/supabase-js'
-import type { Database } from '@/types/database.types'
 import { getOwnedEvent } from '@/features/events/services/eventService'
 import { createClient } from '@/lib/supabase/server'
 import { ACTION_ERROR_CODES, AppError } from '@/lib/errors'
-import { readHeaderBytes, sniffImageType } from '@/features/info/lib/imageType'
 import { parseDesignConfig } from '@/features/certificates/templates/configSchema'
 import type { CertificateDesignConfig } from '@/features/certificates/templates/types'
-import { logger } from '@/lib/logger'
+import {
+  createTemplate,
+  deleteTemplate,
+  getTemplateRow,
+  listTemplateRows,
+  signTemplateUrl,
+  type TemplateRow,
+} from '@/features/design/services/designTemplateStore'
 
 /**
  * Custom certificate templates: storage and persistence.
+ *
+ * The bucket, the byte sniffing, the dimension bounds and the signed-URL reads
+ * are shared with custom photo frames in `designTemplateStore`; this module owns
+ * only what is specific to a certificate, which is its text-layer
+ * configuration.
  *
  * Artwork lives in a **private** bucket, read through short-lived signed URLs. An
  * organizer's working design is their asset, not public event content, so no
  * public URL for a template ever exists. Upload, update, and delete are scoped by
  * the event's organizer, matching the table's own RLS.
  *
- * The bytes are sniffed rather than trusted. `File.type` is supplied by the
- * browser, so a script renamed `template.png` arrives claiming to be an image; the
- * PNG signature is the real check. A certificate is drawn straight onto a canvas
- * from these bytes, which is why that matters here.
- *
  * The stored file is the organizer's own, byte for byte. Nothing here decodes it,
  * inspects it, or re-encodes it; the reported image dimensions are used only for
- * the range check below, and to give the renderer the coordinate space its saved
- * text layers live in.
+ * the range check, and to give the renderer the coordinate space its saved text
+ * layers live in.
  */
 
-type Client = SupabaseClient<Database>
-type TemplateRow = Database['public']['Tables']['event_design_templates']['Row']
-
-export const BUCKET = 'event-templates'
-
-/** Long enough to render, short enough that a leaked link expires. */
-const SIGNED_URL_TTL_SECONDS = 60 * 30
-
-const MIN_EDGE = 64
-const MAX_EDGE = 8000
-
-/** Mirrors the `event-templates` bucket: 5 MB, PNG only. */
-export const MAX_TEMPLATE_BYTES = 5 * 1024 * 1024
-export const TEMPLATE_MIME = 'image/png' as const
-
-const COLUMNS =
-  'id, event_id, name, storage_path, image_width, image_height, design_config, created_at, updated_at' as const
+export {
+  BUCKET,
+  MAX_TEMPLATE_BYTES,
+  TEMPLATE_MIME,
+} from '@/features/design/services/designTemplateStore'
 
 export type CertificateTemplate = {
   id: string
@@ -82,32 +74,15 @@ function toTemplate(row: TemplateRow, signedUrl: string): CertificateTemplate {
   }
 }
 
-async function signUrl(client: Client, storagePath: string): Promise<string> {
-  const { data, error } = await client.storage
-    .from(BUCKET)
-    .createSignedUrl(storagePath, SIGNED_URL_TTL_SECONDS)
-  if (error) throw error
-  return data.signedUrl
-}
-
 /** Every custom certificate template for an event, newest first. */
 export async function listCertificateTemplates(eventId: string): Promise<CertificateTemplate[]> {
   await getOwnedEvent(eventId)
   const client = await createClient()
 
-  const { data, error } = await client
-    .from('event_design_templates')
-    .select(COLUMNS)
-    .eq('event_id', eventId)
-    .eq('kind', 'certificate')
-    .order('created_at', { ascending: false })
-
-  if (error) throw error
-
-  const rows = (data ?? []) as TemplateRow[]
+  const rows = await listTemplateRows(client, eventId, 'certificate')
   const templates: CertificateTemplate[] = []
   for (const row of rows) {
-    templates.push(toTemplate(row, await signUrl(client, row.storage_path)))
+    templates.push(toTemplate(row, await signTemplateUrl(client, row.storage_path)))
   }
   return templates
 }
@@ -119,20 +94,8 @@ export async function getCertificateTemplate(
   await getOwnedEvent(eventId)
   const client = await createClient()
 
-  const { data, error } = await client
-    .from('event_design_templates')
-    .select(COLUMNS)
-    .eq('id', templateId)
-    .eq('event_id', eventId)
-    .maybeSingle()
-
-  if (error) throw error
-  if (!data) {
-    throw new AppError(ACTION_ERROR_CODES.NOT_FOUND, 'That template does not exist.')
-  }
-
-  const row = data as TemplateRow
-  return toTemplate(row, await signUrl(client, row.storage_path))
+  const row = await getTemplateRow(client, eventId, templateId)
+  return toTemplate(row, await signTemplateUrl(client, row.storage_path))
 }
 
 /**
@@ -151,86 +114,18 @@ export async function createCertificateTemplate(input: {
   const event = await getOwnedEvent(input.eventId)
   const client = await createClient()
 
-  if (input.file.size === 0) {
-    throw new AppError(ACTION_ERROR_CODES.VALIDATION_FAILED, 'That file is empty.')
-  }
-  if (input.file.size > MAX_TEMPLATE_BYTES) {
-    throw new AppError(
-      ACTION_ERROR_CODES.VALIDATION_FAILED,
-      'Templates must be 5 MB or smaller. Export a smaller PNG and try again.'
-    )
-  }
-
-  const sniffed = sniffImageType(await readHeaderBytes(input.file))
-  if (sniffed !== 'image/png') {
-    throw new AppError(
-      ACTION_ERROR_CODES.VALIDATION_FAILED,
-      'Upload a PNG file. PSD and PDF are not supported — export your design as a PNG.'
-    )
-  }
-
-  assertUsableDimensions(input.imageSize)
-
-  const storagePath = `${event.organizer_id}/${event.id}/templates/${crypto.randomUUID()}.png`
-  const { error: uploadError } = await client.storage.from(BUCKET).upload(storagePath, input.file, {
-    contentType: TEMPLATE_MIME,
-    cacheControl: '3600',
-    upsert: false,
+  const row = await createTemplate({
+    client,
+    event,
+    kind: 'certificate',
+    name: input.name,
+    imageSize: input.imageSize,
+    designConfig: input.designConfig,
+    file: input.file,
+    logScope: 'certificate_template',
   })
 
-  if (uploadError) {
-    // The real cause is logged and then deliberately not shown. A Storage error
-    // can carry bucket or policy text that has no business in front of an
-    // organizer, and the user-facing message stays generic for that reason.
-    //
-    // It used to be discarded entirely, which made this the only failure branch
-    // in the whole upload with no diagnostics: the ZIP-style "it failed but I
-    // cannot tell you why". The distinction matters because every precondition
-    // above has already passed by this point — the file is a valid PNG within the
-    // size and dimension limits — so whatever is left is either a row-level
-    // security decision or a Storage-side rejection, and only the error text
-    // distinguishes them.
-    logger.error('certificate_template_upload_failed', {
-      bucket: BUCKET,
-      path: storagePath,
-      supabaseMessage: uploadError.message,
-      supabaseCode: uploadError.status,
-      policyDenial: /row-level security|not authorized|permission/i.test(uploadError.message),
-    })
-
-    throw new AppError(
-      ACTION_ERROR_CODES.INTERNAL_ERROR,
-      'The template could not be uploaded. Please try again.'
-    )
-  }
-
-  const { data, error } = await client
-    .from('event_design_templates')
-    .insert({
-      event_id: event.id,
-      name: input.name,
-      // Certificate-only in this phase. The column stays for future editors.
-      kind: 'certificate',
-      storage_path: storagePath,
-      image_width: input.imageSize.width,
-      image_height: input.imageSize.height,
-      design_config: input.designConfig,
-      created_by: event.organizer_id,
-    })
-    .select(COLUMNS)
-    .single()
-
-  if (error) {
-    // Never leave an orphaned object behind if the row could not be written.
-    await client.storage
-      .from(BUCKET)
-      .remove([storagePath])
-      .catch(() => {})
-    throw error
-  }
-
-  const row = data as TemplateRow
-  return toTemplate(row, await signUrl(client, storagePath))
+  return toTemplate(row, await signTemplateUrl(client, row.storage_path))
 }
 
 /** Updates the saved layout. The artwork is untouched, so no re-upload is needed. */
@@ -243,18 +138,22 @@ export async function updateCertificateTemplateDesign(input: {
   await getOwnedEvent(input.eventId)
   const client = await createClient()
 
+  // Not the shared rename helper: a certificate saves its layout in the same
+  // write, and a frame has no layout to save.
   const { data, error } = await client
     .from('event_design_templates')
     .update({ name: input.name, design_config: input.designConfig })
     .eq('id', input.templateId)
     .eq('event_id', input.eventId)
-    .select(COLUMNS)
+    .select(
+      'id, event_id, name, storage_path, image_width, image_height, design_config, created_at, updated_at'
+    )
     .single()
 
   if (error) throw error
 
   const row = data as TemplateRow
-  return toTemplate(row, await signUrl(client, row.storage_path))
+  return toTemplate(row, await signTemplateUrl(client, row.storage_path))
 }
 
 /**
@@ -274,32 +173,5 @@ export async function deleteCertificateTemplate(
   await getOwnedEvent(eventId)
   const client = await createClient()
 
-  const { data, error } = await client
-    .from('event_design_templates')
-    .delete()
-    .eq('id', templateId)
-    .eq('event_id', eventId)
-    .select('storage_path')
-    .single()
-
-  if (error) throw error
-
-  await client.storage.from(BUCKET).remove([(data as { storage_path: string }).storage_path])
-}
-
-function assertUsableDimensions(size: { width: number; height: number }): void {
-  const { width, height } = size
-  if (
-    !Number.isInteger(width) ||
-    !Number.isInteger(height) ||
-    width < MIN_EDGE ||
-    height < MIN_EDGE ||
-    width > MAX_EDGE ||
-    height > MAX_EDGE
-  ) {
-    throw new AppError(
-      ACTION_ERROR_CODES.VALIDATION_FAILED,
-      `Templates must be between ${MIN_EDGE} and ${MAX_EDGE} pixels on each side.`
-    )
-  }
+  await deleteTemplate(client, eventId, templateId)
 }

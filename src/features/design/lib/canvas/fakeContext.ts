@@ -98,6 +98,7 @@ export function createFakeContext(): FakeContext {
     textAlign: CanvasTextAlign
     textBaseline: CanvasTextBaseline
     globalAlpha: number
+    globalCompositeOperation: GlobalCompositeOperation
     letterSpacing: string
   }
 
@@ -109,6 +110,7 @@ export function createFakeContext(): FakeContext {
     textAlign: 'start',
     textBaseline: 'alphabetic',
     globalAlpha: 1,
+    globalCompositeOperation: 'source-over',
     letterSpacing: '0px',
   }
   const stack: State[] = []
@@ -176,6 +178,13 @@ export function createFakeContext(): FakeContext {
     set letterSpacing(value: string) {
       state = { ...state, letterSpacing: value }
       record('letterSpacing', value)
+    },
+    get globalCompositeOperation() {
+      return state.globalCompositeOperation
+    },
+    set globalCompositeOperation(value: GlobalCompositeOperation) {
+      state = { ...state, globalCompositeOperation: value }
+      record('globalCompositeOperation', value)
     },
 
     save: () => {
@@ -293,6 +302,7 @@ export function createFakeContext(): FakeContext {
         textAlign: 'start',
         textBaseline: 'alphabetic',
         globalAlpha: 1,
+        globalCompositeOperation: 'source-over',
         letterSpacing: '0px',
       }
     },

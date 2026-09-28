@@ -6,17 +6,15 @@ import { Button } from '@/components/ui/button'
 import { DesignStudio } from '@/features/design/components/DesignStudio'
 import { FormField } from '@/components/shared/FormField'
 import { PHOTO_FRAME_TEMPLATES } from '@/features/design/lib/templates'
-import { validateImageFile } from '@/features/design/schemas/design.schema'
+import { loadPhotoFrameTemplates } from '@/features/design/lib/templates/loadPhotoFrameTemplate'
+import { ACCEPTED_PHOTO_TYPES, usePhotoPicker } from '@/features/design/components/usePhotoPicker'
+import type { PhotoFrameTemplate } from '@/features/design/services/photoFrameTemplateService'
+import type { DesignTemplate } from '@/features/design/lib/types'
 import type { EventBrand, PhotoFrameData } from '@/features/design/types'
 
 type PhotoFrameGeneratorProps = {
   event: EventBrand
-}
-
-type PhotoState = {
-  url: string
-  name: string
-  bytes: number
+  customFrames?: readonly PhotoFrameTemplate[]
 }
 
 /**
@@ -27,58 +25,44 @@ type PhotoState = {
  * if the organizer closes the tab. A frame is a one-off export, not an event
  * asset.
  */
-export function PhotoFrameGenerator({ event }: PhotoFrameGeneratorProps) {
-  const [photo, setPhoto] = useState<PhotoState | null>(null)
-  const [photoError, setPhotoError] = useState<string | null>(null)
+export function PhotoFrameGenerator({ event, customFrames = [] }: PhotoFrameGeneratorProps) {
+  const { photo, photoError, choose, clear } = usePhotoPicker()
   const [caption, setCaption] = useState('')
 
-  // Object URLs leak until revoked, so the previous one is released whenever the
-  // photo changes and when the component goes away.
+  // Custom frames are decoded from their signed artwork URLs, which is
+  // asynchronous, so the built-ins are usable immediately and the organizer's own
+  // join the picker a tick later.
+  //
+  // The result is keyed on the records it came from, so a re-save returns the
+  // fresh list while an unrelated re-render keeps the already-decoded one. The
+  // key is derived rather than stored, so a stale list is never shown.
+  const customKey = customFrames.map((t) => `${t.id}:${t.updatedAt}`).join(',')
+  const [loaded, setLoaded] = useState<{
+    key: string
+    templates: DesignTemplate<PhotoFrameData>[]
+  }>({ key: '', templates: [] })
+
   useEffect(() => {
+    if (customFrames.length === 0) return
+    let cancelled = false
+    void loadPhotoFrameTemplates(customFrames).then((templates) => {
+      if (!cancelled) setLoaded({ key: customKey, templates })
+    })
     return () => {
-      if (photo?.url) URL.revokeObjectURL(photo.url)
+      cancelled = true
     }
-  }, [photo])
+    // `customKey` summarises `customFrames`; depending on the array itself would
+    // re-decode every artwork on each render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [customKey])
 
-  async function onFileChange(file: File | null) {
-    setPhotoError(null)
-
-    if (!file) {
-      setPhoto(null)
-      return
-    }
-
-    const result = validateImageFile(file)
-    if (!result.accepted) {
-      setPhotoError(result.reason)
-      return
-    }
-
-    const url = URL.createObjectURL(file)
-
-    // Decode to confirm the file really is an image before it reaches a canvas.
-    try {
-      const image = new Image()
-      image.src = url
-      await image.decode()
-
-      const sized = validateImageFile(file, {
-        width: image.naturalWidth,
-        height: image.naturalHeight,
-      })
-      if (!sized.accepted) {
-        URL.revokeObjectURL(url)
-        setPhotoError(sized.reason)
-        return
-      }
-    } catch {
-      URL.revokeObjectURL(url)
-      setPhotoError('That file could not be read as an image.')
-      return
-    }
-
-    setPhoto({ url, name: file.name, bytes: file.size })
-  }
+  // The organizer's own frames are appended to the built-in catalogue, so the
+  // picker, the preview, and the exporter treat them identically. The key
+  // comparison lives inside the memo so a re-render cannot rebuild the array.
+  const templates = useMemo(
+    () => [...PHOTO_FRAME_TEMPLATES, ...(loaded.key === customKey ? loaded.templates : [])],
+    [loaded, customKey]
+  )
 
   const data: PhotoFrameData = useMemo(() => ({ event, caption: caption.trim() }), [event, caption])
 
@@ -87,7 +71,7 @@ export function PhotoFrameGenerator({ event }: PhotoFrameGeneratorProps) {
       kind="photo_frame"
       heading="Photo frames"
       description="Frame a photo with the event branding. The photo stays in your browser and is never uploaded."
-      templates={PHOTO_FRAME_TEMPLATES}
+      templates={templates}
       data={data}
       includeQr={false}
       photoUrl={photo?.url ?? null}
@@ -104,24 +88,16 @@ export function PhotoFrameGenerator({ event }: PhotoFrameGeneratorProps) {
             <Input
               id="photo-frame-file"
               type="file"
-              accept="image/png,image/jpeg,image/webp"
+              accept={ACCEPTED_PHOTO_TYPES}
               aria-invalid={photoError ? 'true' : undefined}
-              onChange={(next) => void onFileChange(next.target.files?.[0] ?? null)}
+              onChange={(next) => void choose(next.target.files?.[0] ?? null)}
             />
           </FormField>
 
           {photo && (
             <div className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2">
               <span className="text-muted-foreground min-w-0 truncate text-sm">{photo.name}</span>
-              <Button
-                type="button"
-                size="sm"
-                variant="ghost"
-                onClick={() => {
-                  setPhoto(null)
-                  setPhotoError(null)
-                }}
-              >
+              <Button type="button" size="sm" variant="ghost" onClick={clear}>
                 Remove
               </Button>
             </div>

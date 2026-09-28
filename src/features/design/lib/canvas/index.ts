@@ -1,4 +1,5 @@
 export * from './color'
+export * from './colorKey'
 export * from './image'
 export * from './qr'
 export * from './shape'
