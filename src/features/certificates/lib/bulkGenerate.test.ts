@@ -317,3 +317,58 @@ describe('bulk generation from a custom template', () => {
     expect(result.filename).toContain('Participation')
   })
 })
+
+describe('bulk generation when a recipient cannot be rendered', () => {
+  /**
+   * The renderer refuses a name that will not fit its text box, so the run has to
+   * report that recipient rather than quietly producing a PDF with a shortened
+   * name — or, worse, dropping them without a word.
+   */
+  it('reports the failure and leaves them out of the archive', async () => {
+    // Queued in order: the first recipient renders, the second does not.
+    renderDesign.mockImplementationOnce(async () => fakeCanvas())
+    renderDesign.mockImplementationOnce(async () => {
+      throw new Error('"Recipient 2" does not fit its text box (40×24px).')
+    })
+
+    const result = await generateCertificatesInBulk({
+      ...base,
+      recipients: [recipient(1), recipient(2), recipient(3)],
+    })
+
+    expect(result.completed).toBe(2)
+    expect(result.entries).toHaveLength(2)
+    expect(result.failed).toHaveLength(1)
+    expect(result.failed[0]?.name).toBe(recipient(2).participant.name)
+    expect(result.failed[0]?.reason).toMatch(/does not fit its text box/)
+  })
+
+  it('keeps generating the other recipients after one fails', async () => {
+    renderDesign.mockImplementationOnce(async () => fakeCanvas())
+    renderDesign.mockImplementationOnce(async () => {
+      throw new Error('does not fit its text box')
+    })
+
+    const result = await generateCertificatesInBulk({
+      ...base,
+      recipients: [recipient(1), recipient(2), recipient(3)],
+    })
+
+    expect(renderDesign).toHaveBeenCalledTimes(3)
+    expect(result.completed).toBe(2)
+  })
+
+  it('never puts the failed recipient in the archive', async () => {
+    renderDesign.mockImplementation(async () => {
+      throw new Error('does not fit its text box')
+    })
+
+    const result = await generateCertificatesInBulk({
+      ...base,
+      recipients: [recipient(1), recipient(2)],
+    })
+
+    expect(result.entries).toHaveLength(0)
+    expect(result.failed).toHaveLength(2)
+  })
+})

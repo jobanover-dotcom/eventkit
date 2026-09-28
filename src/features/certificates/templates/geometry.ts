@@ -2,7 +2,9 @@ import { LIMITS } from '@/features/certificates/templates/configSchema'
 import type {
   CertificateBounds,
   CertificateDesignConfig,
+  HorizontalAlign,
   TextLayer,
+  VerticalAlign,
 } from '@/features/certificates/templates/types'
 
 /**
@@ -290,4 +292,41 @@ export function newTextLayer(
 /** An empty configuration: a template with nothing placed on it yet. */
 export function emptyConfig(): CertificateDesignConfig {
   return { recipientName: {}, certificateType: {}, textLayers: [] }
+}
+
+/** How each vertical alignment maps onto flexbox, for the editor overlay. */
+const VERTICAL_TO_FLEX: Record<VerticalAlign, 'flex-start' | 'center' | 'flex-end'> = {
+  top: 'flex-start',
+  middle: 'center',
+  bottom: 'flex-end',
+}
+
+/**
+ * Where the text sits inside its box, in the editor overlay.
+ *
+ * This was once a `paddingTop` percentage, which looks like a reasonable way to
+ * fake vertical centring and is not: a percentage padding resolves against the
+ * containing block's *width*, so a wide, shallow box — which is most of a
+ * certificate — received a top padding taller than the box itself and pushed the
+ * label out the bottom, outside the thing being edited.
+ *
+ * The vertical axis is flexbox on the box's flex container. The horizontal axis
+ * is `text-align` on the text itself, **not** `justify-content`: the label is a
+ * full-width item, so positioning that item would have no visible effect, and
+ * `text-align` is also what the renderer does, anchoring each wrapped line
+ * individually.
+ *
+ * Only properties that are valid where they are applied are returned. Returning
+ * `justify-content` here caused a bug where both alignment controls computed a
+ * style the browser discarded, because they had been spread onto the flex *item*
+ * instead of its container — container-only properties do nothing there.
+ */
+export function textAlignmentStyles(layer: TextLayer): {
+  alignItems: 'flex-start' | 'center' | 'flex-end'
+  textAlign: HorizontalAlign
+} {
+  return {
+    alignItems: VERTICAL_TO_FLEX[layer.verticalAlign],
+    textAlign: layer.horizontalAlign,
+  }
 }

@@ -28,6 +28,7 @@ import {
   resizeLayer,
   scaleToImage,
   snapLayer,
+  textAlignmentStyles,
   type ResizeHandle,
 } from '@/features/certificates/templates/geometry'
 import {
@@ -590,9 +591,9 @@ export function CertificateTemplateEditor({
                   role="status"
                   className="border-chart-3/40 bg-chart-3/10 rounded-lg border px-3 py-2 text-sm"
                 >
-                  This preview is too long for the box. It will shrink automatically when generated,
-                  and shorten with an ellipsis only if it still does not fit. Make the box wider or
-                  taller to avoid that.
+                  This name does not fit its box at this size. Longer names are shortened when
+                  generated, and one that still will not fit fails that certificate rather than
+                  printing a truncated name. Make the box wider or taller to be safe.
                 </p>
               )}
 
@@ -644,7 +645,7 @@ export function CertificateTemplateEditor({
   )
 }
 
-function TextLayerBox({
+export function TextLayerBox({
   index,
   label,
   layer,
@@ -679,36 +680,63 @@ function TextLayerBox({
       aria-label={`${label} text box ${index + 1}. Arrow keys to move, Delete to remove.`}
       onPointerDown={onPointerDown}
       onKeyDown={onKeyDown}
-      className={
+      // Three levels, each for one job.
+      //
+      // 1. This box. Positioned at the layer's coordinates, and it must NOT clip:
+      //    the eight resize handles are children of it, sitting at negative
+      //    offsets so they straddle the edges. `overflow-hidden` here erased all
+      //    of them.
+      // 2. The text area. `h-full w-full` makes it exactly the size of the box, so
+      //    `overflow-hidden` on this element clips the name to the box and to
+      //    nothing else. It is the flex container, so the vertical alignment from
+      //    `textAlignmentStyles` belongs here — applied to the item instead, those
+      //    container-only properties were silently discarded, which is why the
+      //    alignment controls did nothing.
+      // 3. The name. Typography, plus `text-align` for the horizontal axis: the
+      //    span is full width, so `justify-content` on the container would have
+      //    had no effect, and `text-align` also matches the renderer, which
+      //    anchors each wrapped line individually.
+      //
+      // The size shown is the configured size, deliberately. The PDF auto-fits,
+      // but the editor must not quietly render a different size from the one in
+      // the font-size field, or the number stops meaning anything. Overflow is
+      // reported as a warning instead.
+      className={`absolute ${
         selected
-          ? 'pointer-events-auto absolute rounded-sm border-2 border-primary'
-          : 'pointer-events-auto absolute rounded-sm border border-dashed border-foreground/40'
-      }
+          ? 'pointer-events-auto rounded-sm border-2 border-primary'
+          : 'pointer-events-auto rounded-sm border border-dashed border-foreground/40'
+      }`}
       style={boxStyle}
     >
-      <span
-        className="block truncate text-center"
-        style={{
-          fontFamily: certificateFontFamily(layer.fontFamily),
-          fontSize: layer.fontSize,
-          fontWeight: layer.fontWeight,
-          fontStyle: layer.italic ? 'italic' : 'normal',
-          letterSpacing: `${layer.letterSpacing}px`,
-          lineHeight: layer.lineHeight,
-          color: layer.color,
-          textAlign: layer.horizontalAlign,
-          paddingTop:
-            layer.verticalAlign === 'top' ? 0 : layer.verticalAlign === 'middle' ? '35%' : '55%',
-        }}
+      <div
+        className="flex h-full w-full overflow-hidden"
+        style={{ alignItems: textAlignmentStyles(layer).alignItems }}
       >
-        {SAMPLE_RECIPIENT_NAME}
-      </span>
+        <span
+          className="block w-full break-words"
+          style={{
+            textAlign: textAlignmentStyles(layer).textAlign,
+            fontFamily: certificateFontFamily(layer.fontFamily),
+            fontSize: layer.fontSize,
+            fontWeight: layer.fontWeight,
+            fontStyle: layer.italic ? 'italic' : 'normal',
+            letterSpacing: `${layer.letterSpacing}px`,
+            lineHeight: layer.lineHeight,
+            color: layer.color,
+          }}
+        >
+          {SAMPLE_RECIPIENT_NAME}
+        </span>
+      </div>
 
       {selected && (
         <>
           {RESIZE_HANDLES.map((handle) => (
             <span
               key={handle}
+              // Named so the structural test -- and any future e2e -- can tell a
+              // handle apart from the decoration around it.
+              data-resize-handle={handle}
               aria-hidden="true"
               onPointerDown={onHandlePointerDown(handle)}
               className="bg-primary absolute rounded-sm border-2 border-background"

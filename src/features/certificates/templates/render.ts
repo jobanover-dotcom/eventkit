@@ -169,6 +169,23 @@ export function buildCertificateTemplate(
 
       for (const layer of config.designConfig.textLayers) {
         // Every layer is a recipient-name box, so every one prints the same name.
+        //
+        // Measured before drawing, and refused rather than shortened. A name that
+        // will not fit is a failure for that recipient, not something to ellipsis:
+        // printing a truncated version of somebody's name on a certificate is
+        // wrong in a way an empty box is not. Bulk collects the error per
+        // recipient, and the single-certificate path surfaces it, so nothing
+        // reaches a PDF that quietly drops part of a name.
+        //
+        // The auto-fit below is render-time only; the saved configuration keeps
+        // the organizer's chosen size.
+        const layout = fitLayerText(ctx, data.recipient.name, layer)
+        if (layout.overflows) {
+          throw new Error(
+            `"${data.recipient.name}" does not fit its text box (${layer.width}×${layer.height}px). ` +
+              'Widen or heighten the box on the template so every name fits.'
+          )
+        }
         drawTextLayer(ctx, data.recipient.name, layer)
       }
 

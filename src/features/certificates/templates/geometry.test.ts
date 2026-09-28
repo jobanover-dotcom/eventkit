@@ -12,6 +12,7 @@ import {
   snapLayer,
   snapTolerance,
   snapValue,
+  textAlignmentStyles,
   type ResizeHandle,
 } from './geometry'
 import type { CertificateBounds, TextLayer } from './types'
@@ -384,5 +385,69 @@ describe('resize handles', () => {
     expect(resizeLayer(LAYER, 'w', 10_000, 0, BOUNDS).width).toBe(MIN_LAYER_SIZE)
     expect(resizeLayer(LAYER, 'n', 0, 10_000, BOUNDS).height).toBe(MIN_LAYER_SIZE)
     expect(resizeLayer(LAYER, 's', 0, -10_000, BOUNDS).height).toBe(MIN_LAYER_SIZE)
+  })
+})
+
+describe('textAlignmentStyles', () => {
+  /**
+   * The label used to be positioned with a `paddingTop` percentage, which is
+   * resolved against the box's *width* rather than its height. On a wide,
+   * shallow box — which is what most of a certificate is — that padding exceeded
+   * the box and pushed the name out the bottom, outside the thing being edited.
+   *
+   * These pin the replacement, so the placement cannot quietly regress into
+   * something that only looks right for a square box.
+   */
+  const BOUNDS: CertificateBounds = { width: 1920, height: 1080 }
+
+  it.each([
+    ['left', 'left'],
+    ['center', 'center'],
+    ['right', 'right'],
+  ] as const)('maps horizontal %s to text-align %s', (horizontalAlign, expected) => {
+    // `text-align`, not `justify-content`: the label is a full-width flex item, so
+    // positioning that item would do nothing.
+    expect(textAlignmentStyles(newTextLayer(BOUNDS, { horizontalAlign })).textAlign).toBe(expected)
+  })
+
+  it.each([
+    ['top', 'flex-start'],
+    ['middle', 'center'],
+    ['bottom', 'flex-end'],
+  ] as const)('maps vertical %s to %s', (verticalAlign, expected) => {
+    expect(textAlignmentStyles(newTextLayer(BOUNDS, { verticalAlign })).alignItems).toBe(expected)
+  })
+
+  it('covers every alignment combination', () => {
+    const horizontals = ['left', 'center', 'right'] as const
+    const verticals = ['top', 'middle', 'bottom'] as const
+    const seen = new Set<string>()
+
+    for (const horizontalAlign of horizontals) {
+      for (const verticalAlign of verticals) {
+        const styles = textAlignmentStyles(newTextLayer(BOUNDS, { horizontalAlign, verticalAlign }))
+        seen.add(`${styles.textAlign}/${styles.alignItems}`)
+      }
+    }
+
+    expect(seen.size).toBe(9)
+  })
+
+  it('emits nothing that would be discarded where it is applied', () => {
+    // The bug this guards: `justify-content` and `align-content` are container
+    // properties. Spread onto the flex *item* they parse fine, type-check fine, and
+    // do nothing at all -- so both alignment controls appeared dead while every
+    // other control worked. Only properties valid on the element they land on may
+    // be returned.
+    const styles = textAlignmentStyles(newTextLayer(BOUNDS)) as Record<string, unknown>
+    expect(Object.keys(styles).sort()).toEqual(['alignItems', 'textAlign'])
+    expect(styles).not.toHaveProperty('justifyContent')
+    expect(styles).not.toHaveProperty('alignContent')
+  })
+
+  it('emits no percentage padding, which cannot express vertical alignment here', () => {
+    for (const value of Object.values(textAlignmentStyles(newTextLayer(BOUNDS)))) {
+      expect(value).not.toContain('%')
+    }
   })
 })

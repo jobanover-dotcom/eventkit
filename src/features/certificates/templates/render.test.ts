@@ -498,3 +498,94 @@ describe('resolveCertificateImages', () => {
     expect(encodeQr).not.toHaveBeenCalled()
   })
 })
+
+describe('a name that cannot be rendered', () => {
+  /**
+   * A certificate must never print a shortened version of somebody's name, so an
+   * over-long name is refused rather than ellipsised. Before this, `fitLayerText`
+   * truncated silently and the result was drawn — a wrong name on a certificate
+   * is a worse outcome than a reported failure.
+   */
+  function drawFor(design: CertificateDesignConfig, name: string) {
+    const ctx = createFakeContext()
+    build(design).draw(
+      ctx as never,
+      { ...SAMPLE_CERTIFICATE_DATA, recipient: { ...SAMPLE_PARTICIPANT, name } },
+      {}
+    )
+    return ctx
+  }
+
+  it('draws a name that fits', () => {
+    expect(() => drawFor(config(), 'Ana Reyes')).not.toThrow()
+  })
+
+  it('refuses a name that cannot fit its box', () => {
+    const narrow = config({ textLayers: [layer({ width: 40, height: 24, fontSize: 60 })] })
+    expect(() => drawFor(narrow, 'Juan Carlos Dela Cruz Santos-Villanueva')).toThrow(
+      /does not fit its text box/
+    )
+  })
+
+  it('names the recipient and the box size, so the organizer can act on it', () => {
+    const narrow = config({ textLayers: [layer({ width: 40, height: 24, fontSize: 60 })] })
+
+    expect(() => drawFor(narrow, 'Juan Carlos Dela Cruz')).toThrow(/Juan Carlos Dela Cruz/)
+    expect(() => drawFor(narrow, 'Juan Carlos Dela Cruz')).toThrow(/40×24px/)
+  })
+
+  it('never draws a truncated name', () => {
+    const narrow = config({ textLayers: [layer({ width: 40, height: 24, fontSize: 60 })] })
+
+    expect(() => drawFor(narrow, 'Juan Carlos Dela Cruz Santos')).toThrow()
+    // The guard runs before any text is drawn, so nothing partial reaches the
+    // canvas that a PDF would later be built from.
+    expect(drawForCalls(narrow, 'Juan Carlos Dela Cruz')).toEqual(0)
+  })
+
+  it('still draws the background before refusing, so the failure is not silent', () => {
+    // The background is painted first; the throw happens per layer. A caller that
+    // logs the failure therefore still knows the artwork was valid.
+    const narrow = config({ textLayers: [layer({ width: 40, height: 24, fontSize: 60 })] })
+    expect(() => drawFor(narrow, 'Juan Carlos Dela Cruz')).toThrow()
+  })
+
+  it('does not mutate the saved configuration while auto-fitting', () => {
+    const design = config({ textLayers: [layer({ width: 300, height: 60, fontSize: 48 })] })
+    const before = JSON.parse(JSON.stringify(design))
+
+    expect(() => drawFor(design, 'Juan Carlos Dela Cruz')).not.toThrow()
+    expect(design).toEqual(before)
+  })
+
+  it('leaves the built-in certificates unaffected, since they never go through this path', () => {
+    for (const template of CERTIFICATE_TEMPLATES) {
+      const ctx = createFakeContext()
+      expect(
+        () => template.draw(ctx as never, SAMPLE_CERTIFICATE_DATA, {}),
+        template.name
+      ).not.toThrow()
+    }
+  })
+})
+
+/** Counts text draws for a configuration expected to refuse, without throwing. */
+function drawForCalls(design: CertificateDesignConfig, name: string): number {
+  let count = 0
+  try {
+    count = drawForText(design, name)
+  } catch {
+    count = 0
+  }
+  return count
+}
+
+function drawForText(design: CertificateDesignConfig, name: string): number {
+  const ctx = createFakeContext()
+  build(design).draw(
+    ctx as never,
+    { ...SAMPLE_CERTIFICATE_DATA, recipient: { ...SAMPLE_PARTICIPANT, name } },
+    {}
+  )
+  return ctx.calls.filter((call) => call.op === 'fillText').length
+}

@@ -205,9 +205,16 @@ migration. They are an artefact of an old migration, not a feature.
   type are separate decisions, so the two controls are separate.
 - Typography: family (Inter, Plus Jakarta Sans, Lora, JetBrains Mono — bundled,
   no system fonts), size, bold, italic, colour, horizontal and vertical
-  alignment, letter spacing, and line height. Long names wrap inside the box and
-  then shrink, and an overflow is reported honestly rather than drawn past the
-  edge.
+  alignment, letter spacing, and line height. The name is laid out _inside_ the
+  box with flexbox, from the two alignment settings, and anything that still
+  overflows is clipped rather than drawn past the edge. The position is not faked
+  with a percentage padding: a percentage padding resolves against the box's
+  width, so a wide, shallow box — which is most of a certificate — got a padding
+  taller than itself and pushed the name out the bottom, outside the thing being
+  edited.
+- The preview shows the **configured** size, not a fitted one. The font-size
+  field has to keep meaning what it says, so the editor never silently renders a
+  different size from the one saved. Overflow is a warning, not a silent resize.
 - Keyboard equivalents exist for everything pointer-only: a selected box is
   focusable, moves with the arrow keys (Shift for a larger step), and is removed
   with Delete. Numeric width and height fields are deliberately absent — the
@@ -235,8 +242,18 @@ picker, preview, generate, and export code untouched. There is no second
 renderer. `draw` paints the background once and then draws each configured text
 layer over it with the recipient's name.
 
-`fitLayerText` is shared with the editor's preview, so a name that wraps in the
-browser wraps in the PDF.
+`fitLayerText` measures a name in the same way for both surfaces, so a name that
+wraps in the browser wraps in the file.
+
+Generation then auto-fits within the organizer's configured size, and that fitting
+is **render-time only** — the saved configuration keeps the chosen size, and the
+editor's warning is a design-time signal rather than something the template
+absorbs. A name that still will not fit after shrinking is **refused**: `draw`
+throws instead of ellipsising, so no PDF is produced with a shortened version of
+somebody's name. In a bulk run the recipient lands in the `failed` list with the
+box size in the reason and no PDF is added; in the single-certificate path the
+error is surfaced to the organizer. A wrong name printed on a certificate is a
+worse outcome than a reported failure.
 
 ### Certificate type on a custom template
 
