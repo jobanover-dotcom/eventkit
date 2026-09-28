@@ -1,6 +1,6 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
-import { ArrowRight, CalendarDays, MapPin, UserCog } from 'lucide-react'
+import { ArrowRight, CalendarDays, Frame, MapPin, UserCog } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -107,16 +107,27 @@ export default async function PublicEventPage({ params }: PublicEventPageProps) 
           usually arrives wanting the programme or the room, not the form. */}
       <EventInfoNav eventId={event.id} />
 
-      {canRegister ? (
-        <Button asChild size="lg" className="w-full sm:w-auto sm:self-start">
-          <Link href={`/events/${event.id}/register`}>
-            Register
-            <ArrowRight aria-hidden="true" />
+      {/* Registration is one of two ways to act. A photo frame is the other, and
+          it needs no account and no registration, so it is offered either way. */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+        {canRegister ? (
+          <Button asChild size="lg">
+            <Link href={`/events/${event.id}/register`}>
+              Register
+              <ArrowRight aria-hidden="true" />
+            </Link>
+          </Button>
+        ) : (
+          <p className="text-muted-foreground text-sm">Registration is closed for this event.</p>
+        )}
+
+        <Button asChild size="lg" variant="outline">
+          <Link href={`/events/${event.id}/photo-frame`}>
+            <Frame aria-hidden="true" />
+            Photo Frame
           </Link>
         </Button>
-      ) : (
-        <p className="text-muted-foreground text-sm">Registration is closed for this event.</p>
-      )}
+      </div>
 
       <p className="text-muted-foreground text-sm">
         Registering shows a QR code on this device. Show it at the door to check in.

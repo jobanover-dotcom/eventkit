@@ -168,6 +168,14 @@ export type Database = {
         Args: { p_event_id: string; p_token: string }
         Returns: { id: string; event_id: string; name: string; student_id: string; course: string; year_section: string; role: string; organization: string; title: string; qr_token: string; checked_in_at: string; certificate_type: string; certificate_award: string }[]
       },
+      get_public_photo_frame_templates: {
+        Args: { p_event_id: string }
+        Returns: { template_id: string; template_name: string; image_width: string; image_height: string; artwork_path: string; updated_at: string }[]
+      },
+      is_public_photo_frame_artwork: {
+        Args: { p_path: string }
+        Returns: unknown[]
+      },
       register_participant: {
         Args: { p_event_id: string; p_name: string; p_student_id: string; p_course: string; p_year_section: string; p_email: string }
         Returns: { id: string; qr_token: string }[]
