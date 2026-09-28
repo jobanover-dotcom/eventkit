@@ -4,6 +4,7 @@ import type { Database, Json } from '@/types/database.types'
 import { ACTION_ERROR_CODES, AppError } from '@/lib/errors'
 import { readHeaderBytes, sniffImageType } from '@/features/info/lib/imageType'
 import { logger } from '@/lib/logger'
+import { formatMegabytes, MAX_UPLOAD_BYTES } from '@/lib/uploadLimits'
 
 /**
  * Shared storage for organizer-uploaded design templates.
@@ -40,8 +41,12 @@ const SIGNED_URL_TTL_SECONDS = 60 * 30
 const MIN_EDGE = 64
 const MAX_EDGE = 8000
 
-/** Mirrors the `event-templates` bucket: 5 MB, PNG only. */
-export const MAX_TEMPLATE_BYTES = 5 * 1024 * 1024
+/**
+ * PNG only, as the bucket requires. The size is `MAX_UPLOAD_BYTES` rather than the
+ * bucket's own 5 MB: these templates are posted to a Server Action, and the
+ * platform decides the real ceiling — see `src/lib/uploadLimits.ts`.
+ */
+export const MAX_TEMPLATE_BYTES = MAX_UPLOAD_BYTES
 export const TEMPLATE_MIME = 'image/png' as const
 
 const COLUMNS =
@@ -71,7 +76,7 @@ export async function assertPngUpload(file: Blob): Promise<void> {
   if (file.size > MAX_TEMPLATE_BYTES) {
     throw new AppError(
       ACTION_ERROR_CODES.VALIDATION_FAILED,
-      'Templates must be 5 MB or smaller. Export a smaller PNG and try again.'
+      `Templates must be ${formatMegabytes(MAX_UPLOAD_BYTES)} or smaller. Export a smaller PNG and try again.`
     )
   }
 

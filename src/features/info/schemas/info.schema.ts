@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { MAX_UPLOAD_BYTES } from '@/lib/uploadLimits'
 
 /**
  * Validation for the owner-only Info authoring commands.
@@ -12,12 +13,15 @@ import { z } from 'zod'
 const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/
 
 /**
- * Map upload limits, mirroring the `event-assets` bucket: 5 MB and these four
+ * Map upload limits. The size is `MAX_UPLOAD_BYTES` rather than the `event-assets`
+ * bucket's own 5 MB, because the map is posted to a Server Action and the platform
+ * decides the real ceiling — see `src/lib/uploadLimits.ts`. Types still mirror the
+ * bucket: these four
  * types. Declared here rather than in the service so the client form and the
  * server check share one definition — importing them from the `server-only`
  * service would pull privileged code into the browser bundle.
  */
-export const MAX_MAP_BYTES = 5 * 1024 * 1024
+export const MAX_MAP_BYTES = MAX_UPLOAD_BYTES
 
 export const MAP_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'] as const
 

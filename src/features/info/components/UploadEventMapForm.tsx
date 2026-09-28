@@ -11,6 +11,7 @@ import {
   type MapImageType,
 } from '@/features/info/schemas/info.schema'
 import { uploadEventMapAction } from '@/features/info/actions/uploadEventMap.action'
+import { formatMegabytes } from '@/lib/uploadLimits'
 
 /**
  * Owner-only map upload or replace.
@@ -50,7 +51,7 @@ export function UploadEventMapForm({ eventId }: { eventId: string }) {
       return
     }
     if (file.size > MAX_MAP_BYTES) {
-      setError('The map image must be 5 MB or smaller.')
+      setError(`The map image must be ${formatMegabytes(MAX_MAP_BYTES)} or smaller.`)
       return
     }
 
@@ -82,7 +83,7 @@ export function UploadEventMapForm({ eventId }: { eventId: string }) {
           <FormField
             label="Map image"
             htmlFor="event-map-file"
-            hint="PNG, JPEG, WebP, or GIF up to 5 MB. Participants can see it straight away."
+            hint={`PNG, JPEG, WebP, or GIF up to ${formatMegabytes(MAX_MAP_BYTES)}. Participants can see it straight away.`}
             error={error ?? undefined}
           >
             <input

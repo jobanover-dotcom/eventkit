@@ -100,12 +100,38 @@ a redeploy happened.
 
 ## Troubleshooting
 
-| Symptom                                           | Cause                                                                                                                                        |
-| ------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| 500 on every route, including `/api/health`       | `NEXT_PUBLIC_SUPABASE_URL` or `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` is missing or malformed. Check the value is a full URL, not a bare ref. |
-| 500 that survives adding the variables            | The deployment was not rebuilt. Redeploy — the old bundle has the values baked out.                                                          |
-| `/` renders, organizer pages redirect to `/login` | Expected when Supabase is unconfigured outside production, or when the visitor has no session.                                               |
-| `relation "public.events" does not exist`         | Migrations were never applied to the deployed project. Run `npm run supabase:push`.                                                          |
-| Sign-up succeeds but nothing happens              | Email confirmation is still enabled. See [Local Setup Guide](./setup.md) step 2.                                                             |
-| `Invalid API key` or 401 from Supabase            | The wrong key is set. It must be the **publishable** key, not `service_role`.                                                                |
-| Build log warns about `install-scripts`           | Benign. npm 11 gates the postinstall of `core-js`, `esbuild`, and `unrs-resolver`; none are needed by `next build`.                          |
+| Symptom                                           | Cause                                                                                                                                                                             |
+| ------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 500 on every route, including `/api/health`       | `NEXT_PUBLIC_SUPABASE_URL` or `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` is missing or malformed. Check the value is a full URL, not a bare ref.                                      |
+| 500 that survives adding the variables            | The deployment was not rebuilt. Redeploy — the old bundle has the values baked out.                                                                                               |
+| `/` renders, organizer pages redirect to `/login` | Expected when Supabase is unconfigured outside production, or when the visitor has no session.                                                                                    |
+| `relation "public.events" does not exist`         | Migrations were never applied to the deployed project. Run `npm run supabase:push`.                                                                                               |
+| Sign-up succeeds but nothing happens              | Email confirmation is still enabled. See [Local Setup Guide](./setup.md) step 2.                                                                                                  |
+| `Invalid API key` or 401 from Supabase            | The wrong key is set. It must be the **publishable** key, not `service_role`.                                                                                                     |
+| `Body exceeded 1 MB limit` on an upload           | `experimental.serverActions.bodySizeLimit` in `next.config.ts` was removed or lowered. Next.js defaults it to 1 MB, below every image the app accepts. See "Image uploads" below. |
+| Build log warns about `install-scripts`           | Benign. npm 11 gates the postinstall of `core-js`, `esbuild`, and `unrs-resolver`; none are needed by `next build`.                                                               |
+
+## Image uploads
+
+An image posted to a Server Action travels as the raw HTTP request body, and two
+independent limits apply to it:
+
+- **Next.js** — `experimental.serverActions.bodySizeLimit` in `next.config.ts`,
+  1 MB by default. It is set to `4.2mb` here.
+- **Vercel** — 4.5 MB for a function's request body on the Node runtime, rejected
+  at the platform edge before the framework's own limit is consulted.
+
+**Vercel's 4.5 MB is therefore the real ceiling, and no configuration can raise
+it.** That is why the app advertises a 4 MB maximum (`MAX_UPLOAD_BYTES` in
+`src/lib/uploadLimits.ts`) rather than the 5 MB its Storage buckets allow: a file
+the UI accepted and then lost at the edge would fail with a transport error rather
+than a sentence telling the organizer to export something smaller.
+
+`src/lib/uploadLimits.test.ts` asserts the configured limit still clears
+`MAX_UPLOAD_BYTES` by more than the multipart framing overhead, and still fits
+under Vercel's cap. A change to either number that breaks that relationship fails
+the suite instead of production.
+
+Photos a visitor picks for a badge or a public photo frame are **not** affected:
+they stay in the browser as object URLs and are never posted, so no request body is
+built and they may be up to 5 MB.

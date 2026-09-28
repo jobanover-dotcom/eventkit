@@ -5,6 +5,7 @@ import { ACTION_ERROR_CODES, AppError } from '@/lib/errors'
 import { selectOwnedEvent, type EventRow } from '@/features/events/repositories/eventRepository'
 import { getPublicEvent } from '@/features/events/services/eventService'
 import { readHeaderBytes, sniffAcceptedImageType } from '@/features/info/lib/imageType'
+import { formatMegabytes } from '@/lib/uploadLimits'
 import {
   insertRule,
   insertScheduleItem,
@@ -211,7 +212,10 @@ export async function uploadEventMap(eventId: string, file: File): Promise<{ map
   }
 
   if (file.size > MAX_MAP_BYTES) {
-    throw new AppError(ACTION_ERROR_CODES.UPLOAD_REJECTED, 'The map image must be 5 MB or smaller.')
+    throw new AppError(
+      ACTION_ERROR_CODES.UPLOAD_REJECTED,
+      `The map image must be ${formatMegabytes(MAX_MAP_BYTES)} or smaller.`
+    )
   }
 
   // The declared type is client-supplied, so the bytes decide. This is also the

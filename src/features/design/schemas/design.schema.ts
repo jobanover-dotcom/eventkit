@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { formatMegabytes, MAX_IMAGE_BYTES, MAX_UPLOAD_BYTES } from '@/lib/uploadLimits'
 import {
   BADGE_ROLES,
   CERTIFICATE_TYPES,
@@ -54,8 +55,9 @@ export const photoFrameSchema = z.object({
 
 export type PhotoFrameFormValues = z.infer<typeof photoFrameSchema>
 
-/** Mirrors the `event-assets` / `participant-photos` bucket limits. */
-export const MAX_IMAGE_BYTES = 5 * 1024 * 1024
+// Re-exported so the existing import sites keep working. The definitions, and the
+// reason there are now two limits, live in `@/lib/uploadLimits`.
+export { MAX_IMAGE_BYTES, MAX_UPLOAD_BYTES }
 
 export const ACCEPTED_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp'] as const
 
@@ -65,7 +67,14 @@ export type ImageAcceptance = { accepted: true }
 export type ImageValidation = ImageAcceptance | ImageRejection
 
 /**
- * Validates a chosen photo on type, size, and pixel dimensions.
+ * Validates a chosen image on type, size, and pixel dimensions.
+ *
+ * The size ceiling is a parameter because two kinds of image pass through here
+ * with genuinely different limits. A photo the visitor picks stays in their
+ * browser and is bounded only by what a browser will decode; an image headed for
+ * a Server Action is bounded by what the platform will accept in a request body,
+ * which is lower. Passing the wrong one either rejects a legitimate photo or
+ * promises an upload the transport will refuse. See `src/lib/uploadLimits.ts`.
  *
  * The dimension check is not in the bucket policy but matters for output: a
  * 12000px panorama would be scaled down to fit a frame anyway, and rejecting it
@@ -73,7 +82,8 @@ export type ImageValidation = ImageAcceptance | ImageRejection
  */
 export function validateImageFile(
   file: Pick<File, 'type' | 'size' | 'name'>,
-  dimensions?: { width: number; height: number }
+  dimensions?: { width: number; height: number },
+  maxBytes: number = MAX_IMAGE_BYTES
 ): ImageValidation {
   const accepted = ACCEPTED_IMAGE_TYPES as readonly string[]
 
@@ -81,8 +91,8 @@ export function validateImageFile(
     return { accepted: false, reason: 'Choose a PNG, JPEG, or WebP image.' }
   }
 
-  if (file.size > MAX_IMAGE_BYTES) {
-    return { accepted: false, reason: 'Images must be 5 MB or smaller.' }
+  if (file.size > maxBytes) {
+    return { accepted: false, reason: `Images must be ${formatMegabytes(maxBytes)} or smaller.` }
   }
 
   if (file.size === 0) {

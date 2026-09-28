@@ -35,6 +35,7 @@ const {
   updateCertificateTemplateDesign,
 } = await import('./certificateTemplateService')
 const { emptyConfig, newTextLayer } = await import('@/features/certificates/templates/geometry')
+const { formatMegabytes } = await import('@/lib/uploadLimits')
 
 const EVENT_ID = '11111111-1111-4111-8111-111111111111'
 const EVENT = { id: EVENT_ID, organizer_id: 'owner-1' }
@@ -473,6 +474,8 @@ describe('upload validation', () => {
   })
 
   it('rejects a file over the size limit', async () => {
+    // The message is derived from the limit rather than hardcoded, so it cannot
+    // drift from what the transport will actually accept.
     const huge = { size: MAX_TEMPLATE_BYTES + 1 } as Blob
     await expect(
       createCertificateTemplate({
@@ -482,7 +485,7 @@ describe('upload validation', () => {
         designConfig: config(),
         file: huge,
       })
-    ).rejects.toThrow(/5 MB/)
+    ).rejects.toThrow(`${formatMegabytes(MAX_TEMPLATE_BYTES)} or smaller`)
   })
 
   it('leaves no orphaned object when the row cannot be written', async () => {

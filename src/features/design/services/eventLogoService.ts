@@ -3,7 +3,8 @@ import { getOwnedEvent } from '@/features/events/services/eventService'
 import { createClient } from '@/lib/supabase/server'
 import { ACTION_ERROR_CODES, AppError } from '@/lib/errors'
 import { readHeaderBytes, sniffAcceptedImageType } from '@/features/info/lib/imageType'
-import { ACCEPTED_IMAGE_TYPES, MAX_IMAGE_BYTES } from '@/features/design/schemas/design.schema'
+import { ACCEPTED_IMAGE_TYPES } from '@/features/design/schemas/design.schema'
+import { formatMegabytes, MAX_UPLOAD_BYTES } from '@/lib/uploadLimits'
 
 /**
  * The event's logo, used by every design.
@@ -46,8 +47,11 @@ export async function uploadEventLogo(eventId: string, file: File): Promise<{ lo
     throw new AppError(ACTION_ERROR_CODES.UPLOAD_REJECTED, 'That file is empty.')
   }
 
-  if (file.size > MAX_IMAGE_BYTES) {
-    throw new AppError(ACTION_ERROR_CODES.UPLOAD_REJECTED, 'The logo must be 5 MB or smaller.')
+  if (file.size > MAX_UPLOAD_BYTES) {
+    throw new AppError(
+      ACTION_ERROR_CODES.UPLOAD_REJECTED,
+      `The logo must be ${formatMegabytes(MAX_UPLOAD_BYTES)} or smaller.`
+    )
   }
 
   // The declared type is client-supplied, so the bytes decide. This is also the

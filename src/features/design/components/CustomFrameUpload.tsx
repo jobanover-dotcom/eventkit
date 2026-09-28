@@ -16,6 +16,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { validateImageFile } from '@/features/design/schemas/design.schema'
+import { MAX_UPLOAD_BYTES } from '@/lib/uploadLimits'
 import { PHOTO_PLACEHOLDER_HEX } from '@/features/design/lib/canvas/colorKey'
 import { detectPhotoFrameMask } from '@/features/design/lib/templates/customPhotoFrame'
 import { createPhotoFrameAction } from '@/features/design/actions/customFrame.action'
@@ -132,7 +133,9 @@ export function CustomFrameUpload({ eventId }: { eventId: string }) {
 
     const width = image.naturalWidth
     const height = image.naturalHeight
-    const basic = validateImageFile(file, { width, height })
+    // The upload ceiling, not the browser-photo one: this file is posted to a
+    // Server Action, so the platform's request-body limit is what applies.
+    const basic = validateImageFile(file, { width, height }, MAX_UPLOAD_BYTES)
     if (!basic.accepted) {
       URL.revokeObjectURL(url)
       setError(basic.reason ?? 'That image cannot be used.')

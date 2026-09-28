@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { FormField } from '@/components/shared/FormField'
 import { validateImageFile } from '@/features/design/schemas/design.schema'
+import { formatMegabytes, MAX_UPLOAD_BYTES } from '@/lib/uploadLimits'
 import {
   clearEventLogoAction,
   setEventLogoAction,
@@ -44,7 +45,9 @@ export function EventLogoField({ eventId, logoUrl }: EventLogoFieldProps) {
     if (!file) return
 
     // Checked here for an instant answer; the server re-checks the bytes.
-    const local = validateImageFile(file)
+    // The upload ceiling, not the browser-photo one: this file is posted to a
+    // Server Action, so the platform's request-body limit is what applies.
+    const local = validateImageFile(file, undefined, MAX_UPLOAD_BYTES)
     if (!local.accepted) {
       setError(local.reason)
       return
@@ -88,7 +91,7 @@ export function EventLogoField({ eventId, logoUrl }: EventLogoFieldProps) {
       <FormField
         label="Event logo"
         htmlFor="event-logo-file"
-        hint="Shown on badges and every other design for this event. Without one, designs fall back to the event's monogram."
+        hint={`Shown on badges and every other design for this event. PNG, JPEG, or WebP up to ${formatMegabytes(MAX_UPLOAD_BYTES)}. Without one, designs fall back to the event's monogram.`}
         error={error ?? undefined}
       >
         <Input

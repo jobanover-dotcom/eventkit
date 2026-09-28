@@ -29,6 +29,7 @@ vi.mock('@/features/events/services/eventService', () => ({
 }))
 
 const { removeEventLogo, uploadEventLogo } = await import('./eventLogoService')
+const { formatMegabytes, MAX_UPLOAD_BYTES } = await import('@/lib/uploadLimits')
 
 const EVENT_ID = '11111111-1111-4111-8111-111111111111'
 const ORGANIZER = 'owner-1'
@@ -157,11 +158,13 @@ describe('uploadEventLogo', () => {
     await expect(uploadEventLogo(EVENT_ID, empty)).rejects.toThrow(/empty/i)
   })
 
-  it('rejects a file over the bucket size limit', async () => {
+  it('rejects a file over the upload limit, which the platform enforces first', async () => {
     const big = png()
-    Object.defineProperty(big, 'size', { value: 5 * 1024 * 1024 + 1 })
+    Object.defineProperty(big, 'size', { value: MAX_UPLOAD_BYTES + 1 })
 
-    await expect(uploadEventLogo(EVENT_ID, big)).rejects.toThrow(/5 MB or smaller/i)
+    await expect(uploadEventLogo(EVENT_ID, big)).rejects.toThrow(
+      `${formatMegabytes(MAX_UPLOAD_BYTES)} or smaller`
+    )
     expect(upload).not.toHaveBeenCalled()
   })
 

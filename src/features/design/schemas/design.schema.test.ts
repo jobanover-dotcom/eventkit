@@ -14,6 +14,7 @@ import { templateCountFor } from '@/features/design/lib/templates'
 import {
   ACCEPTED_IMAGE_TYPES,
   MAX_IMAGE_BYTES,
+  MAX_UPLOAD_BYTES,
   validateImageFile,
 } from '@/features/design/schemas/design.schema'
 
@@ -125,14 +126,31 @@ describe('validateImageFile', () => {
     }
   )
 
-  it('rejects a file over the 5 MB bucket limit', () => {
+  it('rejects a browser photo over the browser limit', () => {
     const result = validateImageFile({ ...valid, size: MAX_IMAGE_BYTES + 1 })
     expect(result.accepted).toBe(false)
     expect(result.accepted === false && result.reason).toMatch(/5 MB/)
   })
 
-  it('accepts a file exactly at the limit', () => {
+  it('accepts a browser photo exactly at the limit', () => {
     expect(validateImageFile({ ...valid, size: MAX_IMAGE_BYTES })).toEqual({ accepted: true })
+  })
+
+  it('applies a lower ceiling when one is given, for an upload', () => {
+    // A file headed for a Server Action is bounded by the request body, which is
+    // smaller than what a browser will decode.
+    const between = { ...valid, size: MAX_UPLOAD_BYTES + 1 }
+
+    expect(validateImageFile(between).accepted).toBe(true)
+    const result = validateImageFile(between, undefined, MAX_UPLOAD_BYTES)
+    expect(result.accepted).toBe(false)
+    expect(result.accepted === false && result.reason).toMatch(/4 MB/)
+  })
+
+  it('names the ceiling it applied, so the message is not a guess', () => {
+    const tooBig = { ...valid, size: MAX_UPLOAD_BYTES + 1 }
+    const result = validateImageFile(tooBig, undefined, MAX_UPLOAD_BYTES)
+    expect(result.accepted === false && result.reason).toBe('Images must be 4 MB or smaller.')
   })
 
   it('rejects an empty file', () => {
